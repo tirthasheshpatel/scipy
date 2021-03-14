@@ -715,7 +715,7 @@ def sosfreqz(sos, worN=512, whole=False, fs=2*pi):
     r"""
     Compute the frequency response of a digital filter in SOS format.
 
-    Given `sos`, an array with shape (n, 6) of second order sections of
+    Given ``sos``, an array with shape (n, 6) of second order sections of
     a digital filter, compute the frequency response of the system function::
 
                B0(z)   B1(z)         B{n-1}(z)

@@ -165,15 +165,20 @@ References
    York. 2000.
 
 """
+from __future__ import annotations
 
 import warnings
 import math
 from math import gcd
 from collections import namedtuple
 from itertools import permutations
+from typing import *
+# from typing import WhatEverNeeded, TYPE_CHECKING
 
 import numpy as np
 from numpy import array, asarray, ma
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 from scipy.spatial.distance import cdist
 from scipy.ndimage import measurements
@@ -218,7 +223,7 @@ __all__ = ['find_repeats', 'gmean', 'hmean', 'mode', 'tmean', 'tvar',
            'alexandergovern', 'page_trend_test', 'somersd']
 
 
-def _contains_nan(a, nan_policy='propagate'):
+def _contains_nan(a: np.ndarray, nan_policy: str = 'propagate') -> Tuple[bool, str]:
     policies = ['propagate', 'raise', 'omit']
     if nan_policy not in policies:
         raise ValueError("nan_policy must be one of {%s}" %
@@ -247,7 +252,8 @@ def _contains_nan(a, nan_policy='propagate'):
     return contains_nan, nan_policy
 
 
-def _chk_asarray(a, axis):
+def _chk_asarray(a: npt.ArrayLike, axis: Optional[int]
+                 ) -> Tuple[np.ndarray, int]:
     if axis is None:
         a = np.ravel(a)
         outaxis = 0
@@ -261,7 +267,8 @@ def _chk_asarray(a, axis):
     return a, outaxis
 
 
-def _chk2_asarray(a, b, axis):
+def _chk2_asarray(a: npt.ArrayLike, b: npt.ArrayLike, axis: Optional[int]
+                  ) -> Tuple[np.ndarray, np.ndarray, int]:
     if axis is None:
         a = np.ravel(a)
         b = np.ravel(b)
@@ -279,7 +286,7 @@ def _chk2_asarray(a, b, axis):
     return a, b, outaxis
 
 
-def _shape_with_dropped_axis(a, axis):
+def _shape_with_dropped_axis(a: np.ndarray, axis: int) -> Tuple[int, ...]:
     """
     Given an array `a` and an integer `axis`, return the shape
     of `a` with the `axis` dimension removed.
@@ -298,7 +305,8 @@ def _shape_with_dropped_axis(a, axis):
     return tuple(shp)
 
 
-def _broadcast_shapes(shape1, shape2):
+def _broadcast_shapes(shape1: Tuple[int, ...], shape2: Tuple[int, ...]
+                      ) -> Tuple[int, ...]:
     """
     Given two shapes (i.e. tuples of integers), return the shape
     that would result from broadcasting two arrays with the given
@@ -329,7 +337,8 @@ def _broadcast_shapes(shape1, shape2):
     return tuple(shape)
 
 
-def _broadcast_shapes_with_dropped_axis(a, b, axis):
+def _broadcast_shapes_with_dropped_axis(a: np.ndarray, b: np.ndarray,
+                                        axis: int) -> Tuple[int, ...]:
     """
     Given two arrays `a` and `b` and an integer `axis`, find the
     shape of the broadcast result after dropping `axis` from the
@@ -352,7 +361,9 @@ def _broadcast_shapes_with_dropped_axis(a, b, axis):
     return shp
 
 
-def gmean(a, axis=0, dtype=None, weights=None):
+def gmean(a: npt.ArrayLike, axis: Optional[int] = 0,
+          dtype: npt.DTypeLike = None,
+          weights: Optional[npt.ArrayLike] = None) -> Any:
     """
     Compute the geometric mean along the specified axis.
 
@@ -379,7 +390,7 @@ def gmean(a, axis=0, dtype=None, weights=None):
 
     Returns
     -------
-    gmean : ndarray
+    gmean : array_like
         See `dtype` parameter above.
 
     See Also
@@ -429,7 +440,8 @@ def gmean(a, axis=0, dtype=None, weights=None):
     return np.exp(np.average(log_a, axis=axis, weights=weights))
 
 
-def hmean(a, axis=0, dtype=None):
+def hmean(a: npt.ArrayLike, axis: Optional[int] = 0,
+          dtype: npt.DTypeLike = None) -> Any:
     """
     Calculate the harmonic mean along the specified axis.
 
@@ -451,7 +463,7 @@ def hmean(a, axis=0, dtype=None):
 
     Returns
     -------
-    hmean : ndarray
+    hmean : array_like
         See `dtype` parameter above.
 
     See Also
@@ -500,7 +512,8 @@ def hmean(a, axis=0, dtype=None):
 ModeResult = namedtuple('ModeResult', ('mode', 'count'))
 
 
-def mode(a, axis=0, nan_policy='propagate'):
+def mode(a: npt.ArrayLike, axis: Optional[int] = 0,
+         nan_policy: str = 'propagate') -> ModeResult:
     """
     Return an array of the modal (most common) value in the passed array.
 
@@ -524,9 +537,9 @@ def mode(a, axis=0, nan_policy='propagate'):
 
     Returns
     -------
-    mode : ndarray
+    mode : array_like
         Array of modal values.
-    count : ndarray
+    count : array_like
         Array of counts for each mode.
 
     Examples
@@ -573,7 +586,7 @@ def mode(a, axis=0, nan_policy='propagate'):
 
         return ModeResult(mostfrequent, oldcounts)
 
-    def _mode1D(a):
+    def _mode1D(a: np.ndarray) -> Tuple[Any, Any]:
         vals, cnts = np.unique(a, return_counts=True)
         return vals[cnts.argmax()], cnts.max()
 
@@ -593,7 +606,8 @@ def mode(a, axis=0, nan_policy='propagate'):
     return ModeResult(modes.reshape(newshape), counts.reshape(newshape))
 
 
-def _mask_to_limits(a, limits, inclusive):
+def _mask_to_limits(a: npt.ArrayLike, limits: Tuple,
+                    inclusive: Tuple[bool, bool]) -> np.ma.MaskedArray:
     """Mask an array for values outside of given limits.
 
     This is primarily a utility function.
@@ -639,7 +653,9 @@ def _mask_to_limits(a, limits, inclusive):
     return am
 
 
-def tmean(a, limits=None, inclusive=(True, True), axis=None):
+def tmean(a: npt.ArrayLike, limits: Optional[Tuple] = None,
+          inclusive: Tuple[bool, bool] = (True, True),
+          axis: Optional[int] = None) -> Any:
     """
     Compute the trimmed mean.
 
@@ -664,7 +680,7 @@ def tmean(a, limits=None, inclusive=(True, True), axis=None):
 
     Returns
     -------
-    tmean : float
+    tmean : array_like
         Trimmed mean.
 
     See Also
@@ -689,7 +705,10 @@ def tmean(a, limits=None, inclusive=(True, True), axis=None):
     return am.mean(axis=axis)
 
 
-def tvar(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
+def tvar(a: npt.ArrayLike, limits: Optional[Tuple[Any, Any]] = None,
+         inclusive: Tuple[bool, bool] = (True, True),
+         axis: Optional[int] = 0, ddof: int = 1
+         ) -> Any:
     """
     Compute the trimmed variance.
 
@@ -717,7 +736,7 @@ def tvar(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
 
     Returns
     -------
-    tvar : float
+    tvar : array_like
         Trimmed variance.
 
     Notes
@@ -744,7 +763,9 @@ def tvar(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
     return np.nanvar(amnan, ddof=ddof, axis=axis)
 
 
-def tmin(a, lowerlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
+def tmin(a: npt.ArrayLike, lowerlimit: Optional[SupportsFloat] = None,
+         axis: Optional[int] = 0, inclusive: bool = True,
+         nan_policy: str = 'propagate') -> Any:
     """
     Compute the trimmed minimum.
 
@@ -776,7 +797,7 @@ def tmin(a, lowerlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
 
     Returns
     -------
-    tmin : float, int or ndarray
+    tmin : array_like
         Trimmed minimum.
 
     Examples
@@ -807,7 +828,9 @@ def tmin(a, lowerlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
     return res
 
 
-def tmax(a, upperlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
+def tmax(a: npt.ArrayLike, upperlimit: Optional[SupportsFloat] = None,
+         axis: Optional[int] = 0, inclusive: bool = True,
+         nan_policy: str = 'propagate') -> Any:
     """
     Compute the trimmed maximum.
 
@@ -838,7 +861,7 @@ def tmax(a, upperlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
 
     Returns
     -------
-    tmax : float, int or ndarray
+    tmax : array_like
         Trimmed maximum.
 
     Examples
@@ -869,7 +892,9 @@ def tmax(a, upperlimit=None, axis=0, inclusive=True, nan_policy='propagate'):
     return res
 
 
-def tstd(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
+def tstd(a: npt.ArrayLike, limits: Optional[Tuple[Any, Any]] = None,
+         inclusive: Tuple[bool, bool] = (True, True),
+         axis: Optional[int] = 0, ddof: int = 1) -> Any:
     """
     Compute the trimmed sample standard deviation.
 
@@ -897,7 +922,7 @@ def tstd(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
 
     Returns
     -------
-    tstd : float
+    tstd : array_like
         Trimmed sample standard deviation.
 
     Notes
@@ -918,7 +943,9 @@ def tstd(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
     return np.sqrt(tvar(a, limits, inclusive, axis, ddof))
 
 
-def tsem(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
+def tsem(a: npt.ArrayLike, limits: Optional[Tuple[Any, Any]] = None,
+         inclusive: Tuple[bool, bool] = (True, True),
+         axis: Optional[int] = 0, ddof: int = 1) -> Any:
     """
     Compute the trimmed standard error of the mean.
 
@@ -946,7 +973,7 @@ def tsem(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
 
     Returns
     -------
-    tsem : float
+    tsem : array_like
         Trimmed standard error of the mean.
 
     Notes
@@ -977,7 +1004,9 @@ def tsem(a, limits=None, inclusive=(True, True), axis=0, ddof=1):
 #              MOMENTS              #
 #####################################
 
-def moment(a, moment=1, axis=0, nan_policy='propagate'):
+def moment(a: npt.ArrayLike, moment: npt.ArrayLike = 1,
+           axis: Optional[int] = 0, nan_policy: str = 'propagate'
+           ) -> Any:
     r"""
     Calculate the nth moment about the mean for a sample.
 
@@ -1004,7 +1033,7 @@ def moment(a, moment=1, axis=0, nan_policy='propagate'):
 
     Returns
     -------
-    n-th central moment : ndarray or float
+    n-th central moment : array_like
        The appropriate moment along the given axis or over all values if axis
        is None. The denominator for the moment calculation is the number of
        observations, no degrees of freedom correction is done.
@@ -1055,14 +1084,15 @@ def moment(a, moment=1, axis=0, nan_policy='propagate'):
     # for array_like moment input, return a value for each.
     if not np.isscalar(moment):
         mean = a.mean(axis, keepdims=True)
-        mmnt = [_moment(a, i, axis, mean=mean) for i in moment]
+        mmnt = [_moment(a, i, axis, mean=mean) for i in moment]  # type: ignore
         return np.array(mmnt)
     else:
-        return _moment(a, moment, axis)
+        return _moment(a, moment, axis)  # type: ignore
 
 
 # Moment with optional pre-computed mean, equal to a.mean(axis, keepdims=True)
-def _moment(a, moment, axis, *, mean=None):
+def _moment(a: np.ndarray, moment: int, axis: int, *,
+            mean: Optional[npt.ArrayLike] = None) -> Any:
     if np.abs(moment - np.round(moment)) > 0:
         raise ValueError("All moment parameters must be integers")
 
@@ -1089,8 +1119,12 @@ def _moment(a, moment, axis, *, mean=None):
             return np.float64(0.0)
     else:
         # Exponentiation by squares: form exponent sequence
-        n_list = [moment]
-        current_n = moment
+        # We need to indicate type checker that the list will
+        # contain float and that `current_n` is a float. Otherwise,
+        # it will assume `current_n` to be a integer and the list
+        # to a list of integers.
+        n_list: List[float] = [moment]
+        current_n: float = moment
         while current_n > 2:
             if current_n % 2:
                 current_n = (current_n - 1) / 2
@@ -1114,7 +1148,8 @@ def _moment(a, moment, axis, *, mean=None):
         return np.mean(s, axis)
 
 
-def variation(a, axis=0, nan_policy='propagate', ddof=0):
+def variation(a: npt.ArrayLike, axis: Optional[int] = 0,
+              nan_policy: str = 'propagate', ddof: int = 0) -> Any:
     """
     Compute the coefficient of variation.
 
@@ -1147,7 +1182,7 @@ def variation(a, axis=0, nan_policy='propagate', ddof=0):
 
     Returns
     -------
-    variation : ndarray
+    variation : array_like
         The calculated variation along the requested axis.
 
     References
@@ -1174,7 +1209,8 @@ def variation(a, axis=0, nan_policy='propagate', ddof=0):
     return a.std(axis, ddof=ddof) / a.mean(axis)
 
 
-def skew(a, axis=0, bias=True, nan_policy='propagate'):
+def skew(a: npt.ArrayLike, axis: Optional[int] = 0, bias: bool = True,
+         nan_policy: str = 'propagate') -> Any:
     r"""
     Compute the sample skewness of a data set.
 
@@ -1186,7 +1222,7 @@ def skew(a, axis=0, bias=True, nan_policy='propagate'):
 
     Parameters
     ----------
-    a : ndarray
+    a : array_like
         Input array.
     axis : int or None, optional
         Axis along which skewness is calculated. Default is 0.
@@ -1203,7 +1239,7 @@ def skew(a, axis=0, bias=True, nan_policy='propagate'):
 
     Returns
     -------
-    skewness : ndarray
+    skewness : array_like
         The skewness of values along an axis, returning 0 where all values are
         equal.
 
@@ -1258,6 +1294,7 @@ def skew(a, axis=0, bias=True, nan_policy='propagate'):
         return mstats_basic.skew(a, axis, bias)
 
     mean = a.mean(axis, keepdims=True)
+    mean = cast(np.ndarray, mean)
     m2 = _moment(a, 2, axis, mean=mean)
     m3 = _moment(a, 3, axis, mean=mean)
     with np.errstate(all='ignore'):
@@ -1277,7 +1314,8 @@ def skew(a, axis=0, bias=True, nan_policy='propagate'):
     return vals
 
 
-def kurtosis(a, axis=0, fisher=True, bias=True, nan_policy='propagate'):
+def kurtosis(a: npt.ArrayLike, axis: Optional[int] = 0, fisher: bool = True,
+             bias: bool = True, nan_policy: str = 'propagate') -> Any:
     """
     Compute the kurtosis (Fisher or Pearson) of a dataset.
 
@@ -1292,7 +1330,7 @@ def kurtosis(a, axis=0, fisher=True, bias=True, nan_policy='propagate'):
 
     Parameters
     ----------
-    a : array
+    a : array_like
         Data for which the kurtosis is calculated.
     axis : int or None, optional
         Axis along which the kurtosis is calculated. Default is 0.
@@ -1309,7 +1347,7 @@ def kurtosis(a, axis=0, fisher=True, bias=True, nan_policy='propagate'):
 
     Returns
     -------
-    kurtosis : array
+    kurtosis : array_like
         The kurtosis of values along an axis. If all values are equal,
         return -3 for Fisher's definition and 0 for Pearson's definition.
 
@@ -1368,6 +1406,7 @@ def kurtosis(a, axis=0, fisher=True, bias=True, nan_policy='propagate'):
 
     n = a.shape[axis]
     mean = a.mean(axis, keepdims=True)
+    mean = cast(np.ndarray, mean)
     m2 = _moment(a, 2, axis, mean=mean)
     m4 = _moment(a, 4, axis, mean=mean)
     with np.errstate(all='ignore'):
@@ -1393,7 +1432,9 @@ DescribeResult = namedtuple('DescribeResult',
                              'kurtosis'))
 
 
-def describe(a, axis=0, ddof=1, bias=True, nan_policy='propagate'):
+def describe(a: npt.ArrayLike, axis: Optional[int] = 0, ddof: int = 1,
+             bias: bool = True, nan_policy: str = 'propagate'
+             ) -> DescribeResult:
     """
     Compute several descriptive statistics of the passed array.
 
@@ -1419,22 +1460,22 @@ def describe(a, axis=0, ddof=1, bias=True, nan_policy='propagate'):
 
     Returns
     -------
-    nobs : int or ndarray of ints
+    nobs : array_like
         Number of observations (length of data along `axis`).
         When 'omit' is chosen as nan_policy, the length along each axis
         slice is counted separately.
-    minmax: tuple of ndarrays or floats
+    minmax: tuple of array_like or array_like
         Minimum and maximum value of `a` along the given axis.
-    mean : ndarray or float
+    mean : array_like
         Arithmetic mean of `a` along the given axis.
-    variance : ndarray or float
+    variance : array_like
         Unbiased variance of `a` along the given axis; denominator is number
         of observations minus one.
-    skewness : ndarray or float
+    skewness : array_like
         Skewness of `a` along the given axis, based on moment calculations
         with denominator equal to the number of observations, i.e. no degrees
         of freedom correction.
-    kurtosis : ndarray or float
+    kurtosis : array_like
         Kurtosis (Fisher) of `a` along the given axis.  The kurtosis is
         normalized so that it is zero for the normal distribution.  No
         degrees of freedom are used.
@@ -1485,7 +1526,8 @@ def describe(a, axis=0, ddof=1, bias=True, nan_policy='propagate'):
 SkewtestResult = namedtuple('SkewtestResult', ('statistic', 'pvalue'))
 
 
-def skewtest(a, axis=0, nan_policy='propagate'):
+def skewtest(a: npt.ArrayLike, axis: Optional[int] = 0,
+             nan_policy: str = 'propagate') -> SkewtestResult:
     """
     Test whether the skew is different from the normal distribution.
 
@@ -1495,7 +1537,7 @@ def skewtest(a, axis=0, nan_policy='propagate'):
 
     Parameters
     ----------
-    a : array
+    a : array_like
         The data to be tested.
     axis : int or None, optional
        Axis along which statistics are calculated. Default is 0.
@@ -1510,9 +1552,9 @@ def skewtest(a, axis=0, nan_policy='propagate'):
 
     Returns
     -------
-    statistic : float
+    statistic : array_like
         The computed z-score for this test.
-    pvalue : float
+    pvalue : array_like
         Two-sided p-value for the hypothesis test.
 
     Notes
@@ -1564,13 +1606,15 @@ def skewtest(a, axis=0, nan_policy='propagate'):
     y = np.where(y == 0, 1, y)
     Z = delta * np.log(y / alpha + np.sqrt((y / alpha)**2 + 1))
 
-    return SkewtestResult(Z, 2 * distributions.norm.sf(np.abs(Z)))
+    return SkewtestResult(Z, 2 * distributions.norm.sf(np.abs(Z)))  # type: ignore[attr-defined]
 
 
 KurtosistestResult = namedtuple('KurtosistestResult', ('statistic', 'pvalue'))
 
 
-def kurtosistest(a, axis=0, nan_policy='propagate'):
+def kurtosistest(a: npt.ArrayLike, axis: Optional[int] = 0,
+                 nan_policy: str = 'propagate'
+                 ) -> KurtosistestResult:
     """
     Test whether a dataset has normal kurtosis.
 
@@ -1580,7 +1624,7 @@ def kurtosistest(a, axis=0, nan_policy='propagate'):
 
     Parameters
     ----------
-    a : array
+    a : array_like
         Array of the sample data.
     axis : int or None, optional
        Axis along which to compute test. Default is 0. If None,
@@ -1595,9 +1639,9 @@ def kurtosistest(a, axis=0, nan_policy='propagate'):
 
     Returns
     -------
-    statistic : float
+    statistic : array_like
         The computed z-score for this test.
-    pvalue : float
+    pvalue : array_like
         The two-sided p-value for the hypothesis test.
 
     Notes
@@ -1661,13 +1705,14 @@ def kurtosistest(a, axis=0, nan_policy='propagate'):
         Z = Z[()]
 
     # zprob uses upper tail, so Z needs to be positive
-    return KurtosistestResult(Z, 2 * distributions.norm.sf(np.abs(Z)))
+    return KurtosistestResult(Z, 2 * distributions.norm.sf(np.abs(Z)))  # type: ignore[attr-defined]
 
 
 NormaltestResult = namedtuple('NormaltestResult', ('statistic', 'pvalue'))
 
 
-def normaltest(a, axis=0, nan_policy='propagate'):
+def normaltest(a: npt.ArrayLike, axis: Optional[int] = 0,
+               nan_policy='propagate') -> NormaltestResult:
     """
     Test whether a sample differs from a normal distribution.
 
@@ -1693,10 +1738,10 @@ def normaltest(a, axis=0, nan_policy='propagate'):
 
     Returns
     -------
-    statistic : float or array
+    statistic : array_like
         ``s^2 + k^2``, where ``s`` is the z-score returned by `skewtest` and
         ``k`` is the z-score returned by `kurtosistest`.
-    pvalue : float or array
+    pvalue : array_like
        A 2-sided chi squared probability for the hypothesis test.
 
     References
@@ -1738,13 +1783,13 @@ def normaltest(a, axis=0, nan_policy='propagate'):
     k, _ = kurtosistest(a, axis)
     k2 = s*s + k*k
 
-    return NormaltestResult(k2, distributions.chi2.sf(k2, 2))
+    return NormaltestResult(k2, distributions.chi2.sf(k2, 2))  # type: ignore[attr-defined]
 
 
 Jarque_beraResult = namedtuple('Jarque_beraResult', ('statistic', 'pvalue'))
 
 
-def jarque_bera(x):
+def jarque_bera(x: npt.ArrayLike) -> Jarque_beraResult:
     """
     Perform the Jarque-Bera goodness of fit test on sample data.
 
@@ -1762,9 +1807,9 @@ def jarque_bera(x):
 
     Returns
     -------
-    jb_value : float
+    jb_value : array_like
         The test statistic.
-    p : float
+    p : array_like
         The p-value for the hypothesis test.
 
     References
@@ -1797,7 +1842,7 @@ def jarque_bera(x):
     skewness = (1 / n * np.sum(diffx**3)) / (1 / n * np.sum(diffx**2))**(3 / 2.)
     kurtosis = (1 / n * np.sum(diffx**4)) / (1 / n * np.sum(diffx**2))**2
     jb_value = n / 6 * (skewness**2 + (kurtosis - 3)**2 / 4)
-    p = 1 - distributions.chi2.cdf(jb_value, 2)
+    p = 1 - distributions.chi2.cdf(jb_value, 2)  # type: ignore[attr-defined]
 
     return Jarque_beraResult(jb_value, p)
 
@@ -1810,48 +1855,50 @@ def jarque_bera(x):
 @np.deprecate(
     message="`itemfreq` is deprecated and will be removed in a "
             "future version. Use instead `np.unique(..., return_counts=True)`")
-def itemfreq(a):
+def itemfreq(a: npt.ArrayLike) -> Any:
     """
-Return a 2-D array of item frequencies.
+    Return a 2-D array of item frequencies.
 
-Parameters
-----------
-a : (N,) array_like
-    Input array.
+    Parameters
+    ----------
+    a : (N,) array_like
+        Input array.
 
-Returns
--------
-itemfreq : (K, 2) ndarray
-    A 2-D frequency table.  Column 1 contains sorted, unique values from
-    `a`, column 2 contains their respective counts.
+    Returns
+    -------
+    itemfreq : (K, 2) array_like
+        A 2-D frequency table.  Column 1 contains sorted, unique values from
+        `a`, column 2 contains their respective counts.
 
-Examples
---------
->>> from scipy import stats
->>> a = np.array([1, 1, 5, 0, 1, 2, 2, 0, 1, 4])
->>> stats.itemfreq(a)
-array([[ 0.,  2.],
-       [ 1.,  4.],
-       [ 2.,  2.],
-       [ 4.,  1.],
-       [ 5.,  1.]])
->>> np.bincount(a)
-array([2, 4, 2, 0, 1, 1])
+    Examples
+    --------
+    >>> from scipy import stats
+    >>> a = np.array([1, 1, 5, 0, 1, 2, 2, 0, 1, 4])
+    >>> stats.itemfreq(a)
+    array([[ 0.,  2.],
+        [ 1.,  4.],
+        [ 2.,  2.],
+        [ 4.,  1.],
+        [ 5.,  1.]])
+    >>> np.bincount(a)
+    array([2, 4, 2, 0, 1, 1])
 
->>> stats.itemfreq(a/10.)
-array([[ 0. ,  2. ],
-       [ 0.1,  4. ],
-       [ 0.2,  2. ],
-       [ 0.4,  1. ],
-       [ 0.5,  1. ]])
-"""
+    >>> stats.itemfreq(a/10.)
+    array([[ 0. ,  2. ],
+        [ 0.1,  4. ],
+        [ 0.2,  2. ],
+        [ 0.4,  1. ],
+        [ 0.5,  1. ]])
+    """
     items, inv = np.unique(a, return_inverse=True)
     freq = np.bincount(inv)
     return np.array([items, freq]).T
 
 
-def scoreatpercentile(a, per, limit=(), interpolation_method='fraction',
-                      axis=None):
+def scoreatpercentile(a: npt.ArrayLike, per: npt.ArrayLike,
+                      limit: Tuple = (),
+                      interpolation_method: str = 'fraction',
+                      axis: Optional[int] = None) -> Any:
     """
     Calculate the score at a given percentile of the input sequence.
 
@@ -1887,7 +1934,7 @@ def scoreatpercentile(a, per, limit=(), interpolation_method='fraction',
 
     Returns
     -------
-    score : float or ndarray
+    score : array_like
         Score at percentile(s).
 
     See Also
@@ -1931,12 +1978,17 @@ def scoreatpercentile(a, per, limit=(), interpolation_method='fraction',
 
 
 # handle sequence of per's without calling sort multiple times
-def _compute_qth_percentile(sorted_, per, interpolation_method, axis):
+def _compute_qth_percentile(sorted_: np.ndarray, per: npt.ArrayLike,
+                            interpolation_method: str,
+                            axis: int) -> Any:
     if not np.isscalar(per):
+        per = cast(np.ndarray, per)
         score = [_compute_qth_percentile(sorted_, i,
                                          interpolation_method, axis)
                  for i in per]
         return np.array(score)
+
+    per = cast(float, per)
 
     if not (0 <= per <= 100):
         raise ValueError("percentile must be in the range [0, 100]")
@@ -1967,14 +2019,15 @@ def _compute_qth_percentile(sorted_, per, interpolation_method, axis):
         weights = array([(j - idx), (idx - i)], float)
         wshape = [1] * sorted_.ndim
         wshape[axis] = 2
-        weights.shape = wshape
-        sumval = weights.sum()
+        weights.shape = wshape  # type: ignore[assignment]
+        sumval = weights.sum()  # type: ignore[assignment]
 
     # Use np.add.reduce (== np.sum but a little faster) to coerce data type
     return np.add.reduce(sorted_[tuple(indexer)] * weights, axis=axis) / sumval
 
 
-def percentileofscore(a, score, kind='rank'):
+def percentileofscore(a: npt.ArrayLike, score: float,
+                      kind: str = 'rank') -> Any:
     """
     Compute the percentile rank of a score relative to a list of scores.
 
@@ -2004,7 +2057,7 @@ def percentileofscore(a, score, kind='rank'):
 
     Returns
     -------
-    pcos : float
+    pcos : array_like
         Percentile-position of score (0-100) relative to `a`.
 
     See Also
