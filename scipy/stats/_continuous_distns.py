@@ -502,7 +502,8 @@ class arcsine_gen(rv_continuous):
     """
     def _pdf(self, x):
         # arcsine.pdf(x) = 1/(pi*sqrt(x*(1-x)))
-        return 1.0/np.pi/np.sqrt(x*(1-x))
+        with np.errstate(divide='ignore'):
+            return 1.0/np.pi/np.sqrt(x*(1-x))
 
     def _cdf(self, x):
         return 2.0/np.pi*np.arcsin(np.sqrt(x))
@@ -1335,7 +1336,16 @@ class cosine_gen(rv_continuous):
         return 1.0/2/np.pi*(1+np.cos(x))
 
     def _cdf(self, x):
-        return 1.0/2/np.pi*(np.pi + x + np.sin(x))
+        return scu._cosine_cdf(x)
+
+    def _sf(self, x):
+        return scu._cosine_cdf(-x)
+
+    def _ppf(self, p):
+        return scu._cosine_invcdf(p)
+
+    def _isf(self, p):
+        return -scu._cosine_invcdf(p)
 
     def _stats(self):
         return 0.0, np.pi*np.pi/3.0-2.0, 0.0, -6.0*(np.pi**4-90)/(5.0*(np.pi*np.pi-6)**2)
@@ -2644,6 +2654,9 @@ class gamma_gen(rv_continuous):
     def _ppf(self, q, a):
         return sc.gammaincinv(a, q)
 
+    def _isf(self, q, a):
+        return sc.gammainccinv(a, q)
+
     def _stats(self, a):
         return a, a, 2.0/np.sqrt(a), 6.0/a
 
@@ -3481,10 +3494,6 @@ class invgauss_gen(rv_continuous):
 
     %(after_notes)s
 
-    When :math:`\mu` is too small, evaluating the cumulative distribution
-    function will be inaccurate due to ``cdf(mu -> 0) = inf * 0``.
-    NaNs are returned for :math:`\mu \le 0.0028`.
-
     %(example)s
 
     """
@@ -3501,12 +3510,27 @@ class invgauss_gen(rv_continuous):
     def _logpdf(self, x, mu):
         return -0.5*np.log(2*np.pi) - 1.5*np.log(x) - ((x-mu)/mu)**2/(2*x)
 
+    # approach adapted from equations in
+    # https://journal.r-project.org/archive/2016-1/giner-smyth.pdf,
+    # not R code. see gh-13616
+
+    def _logcdf(self, x, mu):
+        fac = 1 / np.sqrt(x)
+        a = _norm_logcdf(fac * ((x / mu) - 1))
+        b = 2 / mu + _norm_logcdf(-fac * ((x / mu) + 1))
+        return a + np.log1p(np.exp(b - a))
+
+    def _logsf(self, x, mu):
+        fac = 1 / np.sqrt(x)
+        a = _norm_logsf(fac * ((x / mu) - 1))
+        b = 2 / mu + _norm_logcdf(-fac * (x + mu) / mu)
+        return a + np.log1p(-np.exp(b - a))
+
+    def _sf(self, x, mu):
+        return np.exp(self._logsf(x, mu))
+
     def _cdf(self, x, mu):
-        fac = np.sqrt(1.0/x)
-        # Numerical accuracy for small `mu` is bad.  See #869.
-        C1 = _norm_cdf(fac*(x-mu)/mu)
-        C1 += np.exp(1.0/mu) * _norm_cdf(-fac*(x+mu)/mu) * np.exp(1.0/mu)
-        return C1
+        return np.exp(self._logcdf(x, mu))
 
     def _stats(self, mu):
         return mu, mu**3.0, 3*np.sqrt(mu), 15*mu
@@ -3977,6 +4001,11 @@ class invweibull_gen(rv_continuous):
     def _entropy(self, c):
         return 1+_EULER + _EULER / c - np.log(c)
 
+    def _fitstart(self, data, args=None):
+        # invweibull requires c > 1 for the first moment to exist, so use 2.0
+        args = (2.0,) if args is None else args
+        return super(invweibull_gen, self)._fitstart(data, args=args)
+
 
 invweibull = invweibull_gen(a=0, name='invweibull')
 
@@ -4105,10 +4134,19 @@ class laplace_gen(rv_continuous):
         return 0.5*np.exp(-abs(x))
 
     def _cdf(self, x):
-        return np.where(x > 0, 1.0-0.5*np.exp(-x), 0.5*np.exp(x))
+        with np.errstate(over='ignore'):
+            return np.where(x > 0, 1.0 - 0.5*np.exp(-x), 0.5*np.exp(x))
+
+    def _sf(self, x):
+        # By symmetry...
+        return self._cdf(-x)
 
     def _ppf(self, q):
         return np.where(q > 0.5, -np.log(2*(1-q)), np.log(2*q))
+
+    def _isf(self, q):
+        # By symmetry...
+        return -self._ppf(q)
 
     def _stats(self):
         return 0, 2, 0, 3
@@ -8350,11 +8388,20 @@ class wald_gen(invgauss_gen):
         # wald.pdf(x) = 1/sqrt(2*pi*x**3) * exp(-(x-1)**2/(2*x))
         return invgauss._pdf(x, 1.0)
 
+    def _cdf(self, x):
+        return invgauss._cdf(x, 1.0)
+
+    def _sf(self, x):
+        return invgauss._sf(x, 1.0)
+
     def _logpdf(self, x):
         return invgauss._logpdf(x, 1.0)
 
-    def _cdf(self, x):
-        return invgauss._cdf(x, 1.0)
+    def _logcdf(self, x):
+        return invgauss._logcdf(x, 1.0)
+
+    def _logsf(self, x):
+        return invgauss._logsf(x, 1.0)
 
     def _stats(self):
         return 1.0, 1.0, 3.0, 15.0
