@@ -2078,7 +2078,6 @@ def anderson_ksamp(samples, midrank=True):
 AnsariResult = namedtuple('AnsariResult', ('statistic', 'pvalue'))
 
 
-
 class _ABW:
     '''Distribution of Ansari-Bradley W-statistic under the null hypothesis'''
     # TODO: calculate exact distribution considering ties
@@ -2090,36 +2089,48 @@ class _ABW:
         self.m = None
         self.n = None
 
-    def pmf(self, k, m, n):
-        '''Probability mass function'''
-        self._recalc(m, n)
-        # convention is that PMF at k = 12.5 is the same as at k = 12
-        ind = int(k - self.astart)
-        return self.freqs[ind] / self.total
-
-    def cdf(self, k, m, n):
-        '''Cumulative distribution function'''
-        self._recalc(m, n)
-        # this is a bit subtle; easiest to think through example:
-        # the CDF at k = 12.5 should be the same as at k = 12
-        ind = int(np.floor(k - self.astart))
-        return self.freqs[:ind+1].sum() / self.total
-
-    def sf(self, k, m, n):
-        '''Survival function'''
-        self._recalc(m, n)
-        # this is a bit subtle; easiest to think through example:
-        # the SF at k = 12.5 should be the same at k = 13
-        ind = int(np.ceil(k - self.astart))
-        return self.freqs[ind:].sum() / self.total
-
-    def _recalc(self, m, n):
-        '''If necessary, recalculate exact distribution'''
-        if m != self.m or n != self.n:
+    def _recalc(self, n, m):
+        '''When necessary, recalculate exact distribution'''
+        if n != self.n or m != self.m:
+            self.n, self.m = n, m
+            # distribution is NOT symmetric when m + n is odd
+            # n is len(x), m is len(y), and ratio of scales is defined x/y
             astart, a1, _ = statlib.gscale(n, m)
-            self.astart = astart
+            self.astart = astart  # minimum value of statistic
+            # Exact distribution of test statistic under null hypothesis
+            # expressed as frequencies/counts/integers to maintain precision.
+            # Stored as floats to avoid overflow of sums.
             self.freqs = a1.astype(np.float64)
             self.total = self.freqs.sum()  # could calculate from m and n
+            # probability mass is self.freqs / self.total;
+
+    def pmf(self, k, n, m):
+        '''Probability mass function'''
+        self._recalc(n, m)
+        # The convention here is that PMF at k = 12.5 is the same as at k = 12,
+        # -> use `floor` in case of ties.
+        ind = np.floor(k - self.astart).astype(int)
+        return self.freqs[ind] / self.total
+
+    def cdf(self, k, n, m):
+        '''Cumulative distribution function'''
+        self._recalc(n, m)
+        # This is a bit subtle; easiest to think through an example:
+        # the CDF at k = 12.5 should be the same as at k = 12 -> `floor`
+        # The convention is for  CDF at k = 12 to included the probability mass
+        # at k = 12 -> slice `:ind+1`.
+        ind = np.floor(k - self.astart).astype(int)
+        return self.freqs[:ind+1].sum() / self.total
+
+    def sf(self, k, n, m):
+        '''Survival function'''
+        self._recalc(n, m)
+        # This is a bit subtle; easiest to think through an example:
+        # the SF at k = 12.5 should be the same at k = 13 -> `ceil`.
+        # The convention is for  SF at k = 13 to included the probability mass
+        # at k = 13 -> slice `ind:`.
+        ind = np.ceil(k - self.astart).astype(int)
+        return self.freqs[ind:].sum() / self.total
 
 
 # Maintain state for faster repeat calls to ansari w/ method='exact'
@@ -2248,14 +2259,14 @@ def ansari(x, y, alternative='two-sided'):
         warnings.warn("Ties preclude use of exact statistic.")
     if exact:
         if alternative == 'two-sided':
-            pval = 2.0 * np.minimum(_abw_state.cdf(AB, m, n),
-                                    _abw_state.sf(AB, m, n))
+            pval = 2.0 * np.minimum(_abw_state.cdf(AB, n, m),
+                                    _abw_state.sf(AB, n, m))
         elif alternative == 'greater':
             # AB statistic is _smaller_ when ratio of scales is larger,
             # so this is the opposite of the usual calculation
-            pval = _abw_state.cdf(AB, m, n)
+            pval = _abw_state.cdf(AB, n, m)
         else:
-            pval = _abw_state.sf(AB, m, n)
+            pval = _abw_state.sf(AB, n, m)
         return AnsariResult(AB, min(1.0, pval))
 
     # otherwise compute normal approximation
