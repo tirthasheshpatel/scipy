@@ -2200,30 +2200,27 @@ def ansari(x, y, alternative='two-sided'):
         warnings.warn("Ties preclude use of exact statistic.")
     if exact:
         astart, a1, ifault = statlib.gscale(n, m)
-        ind = AB - astart
+        # astart is the minimum value of the statistic given the sample sizes
+        # it is returned as a float, but should be exactly integer
+        # ind is the index in a1 corresponding with the quantile AB
+        ind = int(np.round(AB - astart))
         total = np.sum(a1, axis=0)
         if ind < len(a1)/2.0:
-            cind = int(ceil(ind))
-            if cind != ind:
-                cind = cind - 1
             if alternative == 'two-sided':
-                pval = 2.0 * np.sum(a1[:cind+1], axis=0) / total
+                pval = 2.0 * np.sum(a1[:ind+1], axis=0) / total
             elif alternative == 'greater':
                 # see [3]_
-                pval = np.sum(a1[:cind+1], axis=0) / total
+                pval = np.sum(a1[:ind+1], axis=0) / total
             else:
                 # see [3]_
-                pval = 1.0 - np.sum(a1[:cind], axis=0) / total
+                pval = 1.0 - np.sum(a1[:ind], axis=0) / total
         else:
-            find = int(floor(ind))
-            if find != ind:
-                find = find + 1
             if alternative == 'two-sided':
-                pval = 2.0 * np.sum(a1[find:], axis=0) / total
+                pval = 2.0 * np.sum(a1[ind:], axis=0) / total
             elif alternative == 'greater':
-                pval = 1.0 - np.sum(a1[find+1:], axis=0) / total
+                pval = 1.0 - np.sum(a1[ind+1:], axis=0) / total
             else:
-                pval = np.sum(a1[find:], axis=0) / total
+                pval = np.sum(a1[ind:], axis=0) / total
         return AnsariResult(AB, min(1.0, pval))
 
     # otherwise compute normal approximation
