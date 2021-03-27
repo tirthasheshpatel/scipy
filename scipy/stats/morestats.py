@@ -2078,6 +2078,54 @@ def anderson_ksamp(samples, midrank=True):
 AnsariResult = namedtuple('AnsariResult', ('statistic', 'pvalue'))
 
 
+
+class _ABW:
+    '''Distribution of Ansari-Bradley W-statistic under the null hypothesis'''
+    # TODO: calculate exact distribution considering ties
+    # We could avoid summing over more than half the frequencies,
+    # but inititally it doesn't seem worth the extra complexity
+
+    def __init__(self):
+        '''Minimal initializer'''
+        self.m = None
+        self.n = None
+
+    def pmf(self, k, m, n):
+        '''Probability mass function'''
+        self._recalc(m, n)
+        # convention is that PMF at k = 12.5 is the same as at k = 12
+        ind = int(k - self.astart)
+        return self.freqs[ind] / self.total
+
+    def cdf(self, k, m, n):
+        '''Cumulative distribution function'''
+        self._recalc(m, n)
+        # this is a bit subtle; easiest to think through example:
+        # the CDF at k = 12.5 should be the same as at k = 12
+        ind = int(np.floor(k - self.astart))
+        return self.freqs[:ind+1].sum() / self.total
+
+    def sf(self, k, m, n):
+        '''Survival function'''
+        self._recalc(m, n)
+        # this is a bit subtle; easiest to think through example:
+        # the SF at k = 12.5 should be the same at k = 13
+        ind = int(np.ceil(k - self.astart))
+        return self.freqs[ind:].sum() / self.total
+
+    def _recalc(self, m, n):
+        '''If necessary, recalculate exact distribution'''
+        if m != self.m or n != self.n:
+            astart, a1, _ = statlib.gscale(n, m)
+            self.astart = astart
+            self.freqs = a1.astype(np.float64)
+            self.total = self.freqs.sum()  # could calculate from m and n
+
+
+# Maintain state for faster repeat calls to ansari w/ method='exact'
+_abw_state = _ABW()
+
+
 def ansari(x, y, alternative='two-sided'):
     """
     Perform the Ansari-Bradley test for equal scale parameters.
@@ -2199,28 +2247,15 @@ def ansari(x, y, alternative='two-sided'):
     if repeats and (m < 55 or n < 55):
         warnings.warn("Ties preclude use of exact statistic.")
     if exact:
-        astart, a1, ifault = statlib.gscale(n, m)
-        # astart is the minimum value of the statistic given the sample sizes
-        # it is returned as a float, but should be exactly integer
-        # ind is the index in a1 corresponding with the quantile AB
-        ind = int(np.round(AB - astart))
-        total = np.sum(a1, axis=0)
-        if ind < len(a1)/2.0:
-            if alternative == 'two-sided':
-                pval = 2.0 * np.sum(a1[:ind+1], axis=0) / total
-            elif alternative == 'greater':
-                # see [3]_
-                pval = np.sum(a1[:ind+1], axis=0) / total
-            else:
-                # see [3]_
-                pval = 1.0 - np.sum(a1[:ind], axis=0) / total
+        if alternative == 'two-sided':
+            pval = 2.0 * np.minimum(_abw_state.cdf(AB, m, n),
+                                    _abw_state.sf(AB, m, n))
+        elif alternative == 'greater':
+            # AB statistic is _smaller_ when ratio of scales is larger,
+            # so this is the opposite of the usual calculation
+            pval = _abw_state.cdf(AB, m, n)
         else:
-            if alternative == 'two-sided':
-                pval = 2.0 * np.sum(a1[ind:], axis=0) / total
-            elif alternative == 'greater':
-                pval = 1.0 - np.sum(a1[ind+1:], axis=0) / total
-            else:
-                pval = np.sum(a1[ind:], axis=0) / total
+            pval = _abw_state.sf(AB, m, n)
         return AnsariResult(AB, min(1.0, pval))
 
     # otherwise compute normal approximation
