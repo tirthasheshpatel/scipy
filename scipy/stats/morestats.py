@@ -2117,7 +2117,7 @@ class _ABW:
         self._recalc(n, m)
         # This is a bit subtle; easiest to think through an example:
         # the CDF at k = 12.5 should be the same as at k = 12 -> `floor`
-        # The convention is for  CDF at k = 12 to included the probability mass
+        # The convention is for CDF at k = 12 to included the probability mass
         # at k = 12 -> slice `:ind+1`.
         ind = np.floor(k - self.astart).astype(int)
         return self.freqs[:ind+1].sum() / self.total
