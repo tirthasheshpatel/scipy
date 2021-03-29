@@ -4120,7 +4120,7 @@ def sosfilt(sos, x, axis=-1, zi=None):
     Filter data along one dimension using cascaded second-order sections.
 
     Filter a data sequence, `x`, using a digital IIR filter defined by
-    `sos`.
+    ``sos``.
 
     Parameters
     ----------
