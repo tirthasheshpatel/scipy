@@ -89,18 +89,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9]
+        python-version: [3.7]
 
     steps:
     - uses: actions/checkout@v2
 
-    - name: Install Python 3.9
-      if: matrix.python-version == '3.9'
+    - name: Install Python 3.7
+      if: matrix.python-version == '3.7'
       run: |
         sudo add-apt-repository ppa:deadsnakes/ppa
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends python3.9-dev python3.9-distutils python3.9-venv
-        python3.9 -m pip install --upgrade pip setuptools
+        sudo apt-get install -y --no-install-recommends python3.7-dev python3.7-distutils python3.7-venv
+        python3.7 -m pip install --upgrade pip setuptools
 
     - name: Install other build dependencies
       run: |
@@ -114,15 +114,15 @@ jobs:
 
     - name: Install packages
       run: |
-        python3.9 -m pip install --user numpy setuptools wheel cython pytest pytest-xdist pybind11 pytest-xdist pythran
-        python3.9 -m pip install --user nose mpmath argparse Pillow codecov matplotlib "Sphinx!=3.1.0" asv pythran
+        python3.7 -m pip install --user numpy setuptools wheel cython pytest pytest-xdist pybind11 pytest-xdist pythran
+        python3.7 -m pip install --user nose mpmath argparse Pillow codecov matplotlib "Sphinx!=3.1.0" asv pythran
 
     - name: Build Scipy
       run: |
-        python3.9 -u runtests.py -gbj2
+        python3.7 -u runtests.py -gbj2
 
     - name: Build Docs
       run: |
-        python3.9 -u runtests.py -g -j2 --doc html-scipyorg --doc latex
+        python3.7 -u runtests.py -g -j2 --doc html-scipyorg --doc latex
         make -C doc/build/latex all-pdf LATEXOPTS="-file-line-error -halt-on-error"
         cp -f doc/build/latex/scipy-ref.pdf doc/build/html-scipyorg/
