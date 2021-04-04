@@ -1,0 +1,83 @@
+name: Windows Tests
+
+on:
+  push:
+    branches:
+      - master
+      - maintenance/**
+  pull_request:
+    branches:
+      - master
+      - maintenance/**
+
+jobs:
+  test_windows:
+    name: Python 3.9
+    runs-on: windows-2019
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    # - name: clang Version Upgrade
+    #   run: |
+    #     choco install -y llvm
+    #     refreshenv
+    #     choco install -y mingw --force --version=6.4.0
+    #     refreshenv
+    #   shell: pwsh
+
+    - name: Install Python 3.9
+      run: |
+        choco install -y python
+      shell: pwsh
+
+    - name: Install LLVM
+      run: |
+        choco install -y llvm
+      shell: pwsh
+
+    - name: Install mingw
+      run: |
+        # wheels appear to use mingw64 version 6.3.0, but 6.4.0
+        # is the closest match available from choco package manager
+        choco install -y mingw --forcex86 --force --version=6.4.0
+      shell: pwsh
+
+    - name: Install OpenBLAS
+      run: |
+        python -m venv scipy-dev
+        scipy-dev\Scripts\activate
+        python -m pip install --upgrade pip "setuptools<50.0" wheel
+        set NPY_USE_BLAS_ILP64=1
+        $openblas = python tools/openblas_support.py
+        cp $openblas scipy-dev\Lib\openblas64_.a
+        set NPY_USE_BLAS_ILP64=0
+        $openblas = python tools/openblas_support.py
+        cp $openblas scipy-dev\Lib\openblas.a
+        echo "Installed OpenBLAS..."
+      shell: pwsh
+
+    - name: Build SciPy and Run Tests
+      run: |
+        scipy-dev\Scripts\activate
+        python -m pip install cython==0.29.18 matplotlib mpmath numpy==1.19.5 Pillow pybind11 pythran pytest==5.4.3 pytest-cov pytest-env pytest-timeout pytest-xdist==1.34.0
+        $env:PATH="C:\Program Files\LLVM\bin;" + $env:PATH
+        $env:PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin;" + $env:PATH
+        refreshenv
+        set NPY_USE_BLAS_ILP64=1
+        set SCIPY_USE_PYTHRAN=0
+        git clone -n --depth 1 https://github.com/MacPython/scipy-wheels.git
+        cd scipy-wheels
+        git checkout HEAD _distributor_init.py
+        cd ..
+        rm scipy/_distributor_init.py
+        mv scipy-wheels/_distributor_init.py scipy/
+        mkdir dist
+        pip wheel --no-build-isolation -v -v -v --wheel-dir=dist .
+        ls dist -r | Foreach-Object {
+            pip install $_.FullName
+        }
+        python runtests.py --tests scipy/stats/tests/test_sampling.py
+      shell: pwsh
