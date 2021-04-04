@@ -277,6 +277,7 @@ scipy/stats/_stats.c
 scipy/stats/biasedurn.cxx
 scipy/stats/biasedurn.pyx
 scipy/stats/_sobol.c
+scipy/stats/_unuran/_unuran_wrapper.c
 scipy/version.py
 scipy/special/_exprel.c
 scipy/optimize/_group_columns.c
