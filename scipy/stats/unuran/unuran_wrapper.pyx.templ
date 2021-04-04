@@ -1,0 +1,463 @@
+# cython: language_level=3
+
+
+DEF NPY_OLD = isNPY_OLD
+
+
+cimport cython
+cimport numpy as np
+from .unuran cimport *
+
+import ctypes
+import warnings
+import numpy as np
+
+
+__all__ = ["TransformedDensityRejection"]
+
+
+ctypedef double (*cont_func_t)(double, const unur_distr *)
+
+_unur_funct_cont_py = ctypes.CFUNCTYPE(ctypes.c_double,
+                                       ctypes.c_double,
+                                       ctypes.c_void_p)
+
+
+IF not NPY_OLD:
+    from numpy.random cimport bitgen_t
+    from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
+
+
+    cdef object get_numpy_rng(object seed = None):
+        """
+        Create a NumPy Generator object from a given seed.
+
+        Parameters
+        ----------
+        seed : object, optional
+            Seed for the generator. If None, no seed is set.
+
+        Returns
+        -------
+        numpy_rng : object
+            An instance of NumPy's Generator class.
+        """
+        if isinstance(seed, np.random.RandomState):
+            return np.random.default_rng(seed._bit_generator)
+        if isinstance(seed, np.random.Generator):
+            return seed
+        return np.random.default_rng(seed)
+
+
+    cdef unur_urng * get_urng(object numpy_rng) except *:
+        """
+        Convert NumPy's Generator object into UNU.RAN's uniform random number
+        generator.
+
+        Parameters
+        ----------
+        numpy_rng : object
+            An instance of NumPy's Generator class. i.e. a NumPy random
+            number generator.
+
+        Returns
+        -------
+        unuran_urng : unur_urng *
+            A UNU.RAN uniform random number generator.
+        """
+        cdef:
+            bitgen_t *numpy_urng
+            unur_urng *unuran_urng
+            const char *capsule_name = "BitGenerator"
+
+        capsule = numpy_rng.bit_generator.capsule
+
+        if not PyCapsule_IsValid(capsule, capsule_name):
+            raise ValueError("Invalid pointer to anon_func_state.")
+
+        numpy_urng = <bitgen_t *> PyCapsule_GetPointer(capsule, capsule_name)
+        unuran_urng = unur_urng_new(numpy_urng.next_double,
+                                    <void *>(numpy_urng.state))
+
+        return unuran_urng
+ELSE:
+    cdef object global_old_numpy_rng
+
+
+    cdef object get_numpy_rng(object seed = None):
+        """
+        Create a NumPy RandomState object from a given seed.
+
+        Parameters
+        ----------
+        seed : object, optional
+            Seed for the generator. If None, no seed is set.
+
+        Returns
+        -------
+        numpy_rng : object
+            An instance of NumPy's RandomState class.
+        """
+        if (hasattr(np.random, "Generator") and
+            isinstance(seed, np.random.Generator)):
+            return seed
+        elif isinstance(seed, np.random.RandomState):
+            return seed
+        return np.random.RandomState(seed)
+
+
+    cdef double next_double(void *state):
+        global global_old_numpy_rng
+        return global_old_numpy_rng.uniform()
+
+
+    cdef unur_urng * get_urng(object numpy_rng) except *:
+        """
+        Convert NumPy's RandomState generator into UNU.RAN's uniform random
+        number generator.
+
+        Parameters
+        ----------
+        numpy_rng : object
+            An instance of NumPy's RandomState class. i.e. a NumPy
+            random number generator.
+
+        Returns
+        -------
+        unuran_urng : unur_urng *
+            A UNU.RAN uniform random number generator.
+        """
+        cdef unur_urng *unuran_urng
+        global global_old_numpy_rng
+        global_old_numpy_rng = numpy_rng
+        unuran_urng = unur_urng_new(next_double, NULL)
+        return unuran_urng
+
+
+cdef:
+    unur_urng *default_urng = NULL
+    unur_urng *default_urng_aux = NULL
+    object default_numpy_rng = None
+
+
+cdef object _set_default_urng():
+    """Sets the default UNU.RAN uniform random number generator"""
+    global default_urng, default_urng_aux
+    global default_numpy_rng
+
+    if default_numpy_rng is None:
+        if default_urng != NULL:
+            unur_urng_free(default_urng)
+            default_urng = NULL
+        default_numpy_rng = get_numpy_rng()
+
+    try:
+        default_urng = get_urng(default_numpy_rng)
+    except ValueError as e:
+        msg = "Failed to initialize the default URNG."
+        raise RuntimeError(msg) from e
+
+    default_urng_aux = default_urng
+    unur_set_default_urng(default_urng)
+    unur_set_default_urng_aux(default_urng_aux)
+
+
+_set_default_urng()
+
+
+cdef class Method:
+    """A base class for all the methods."""
+
+    cdef unur_gen *rng
+    cdef unur_urng *urng
+    cdef object numpy_rng
+
+    cdef void _set_rng(self, object seed, unur_par *par,
+                       unur_distr *distr) except *:
+        """
+        Create a UNU.RAN random number generator.
+
+        Parameters
+        ----------
+        seed : object
+            Seed for the uniform random number generator. Can be a integer,
+            NumPy BitGenerator, RandomState, or SeedSequence.
+        par : unur_par *
+            UNU.RAN parameter object.
+        distr : unur_distr *
+            UNU.RAN distribution object.
+        """
+        cdef unur_urng *urng = NULL
+
+        if seed is not None:
+            self.numpy_rng = get_numpy_rng(seed)
+            self.urng = get_urng(self.numpy_rng)
+            unur_set_urng(par, self.urng)
+
+        self.rng = unur_init(par)
+        unur_distr_free(distr)
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void _rvs_cont(self, Py_ssize_t size, np.float64_t[::1] out):
+        """
+        Sample random variates from a continuous distribution.
+
+        Parameters
+        ----------
+        size : Py_ssize_t
+            The numbur of variates to draw from the distribution.
+        out : np.float64_t[::1]
+            A memory view with of ``size`` to store the result.
+        """
+        cdef:
+            unur_gen *rng = self.rng
+            Py_ssize_t i
+
+        for i in range(size):
+            out[i] = unur_sample_cont(rng)
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void _rvs_discr(self, Py_ssize_t size, np.int32_t[::1] out):
+        """
+        Sample random variates from a discrete distribution.
+
+        Parameters
+        ----------
+        size : Py_ssize_t
+            The numbur of variates to draw from the distribution.
+        out : np.int32_t[::1]
+            A memory view with of ``size`` to store the result.
+        """
+        cdef:
+            unur_gen *rng = self.rng
+            Py_ssize_t i
+
+        for i in range(size):
+            out[i] = unur_sample_discr(rng)
+
+    def __dealloc__(self):
+        if self.rng != NULL:
+            unur_free(self.rng)
+        if self.urng != NULL:
+            unur_urng_free(self.urng)
+
+
+cdef class TransformedDensityRejection(Method):
+    r"""
+    Transformed Density Rejection Method.
+
+    This is a rejection method to sample from continuous distributions.
+    It takes as input a probability density function and its derivative
+    with respect to the variate to generate random numbers from the
+    distribution.
+
+    Parameters
+    ----------
+    pdf : callable
+        PDF of the distribution. The signature of the PDF is expected to be:
+        ``def pdf(x: float, *params) -> float``. i.e. the PDF should accept
+        a Python float and the parameters and return a Python float.
+    dpdf : callable
+        Derivative of the PDF w.r.t the variate. Must have the same signature
+        as the PDF.
+    params : tuple, optional
+        Parameters that the PDF and DPDF take. Default is an empty tuple.
+    domain : list or tuple of length 2, optional
+        The support of the distribution. Must not contain `nan` values.
+        Default is ``None``. When None, the support is assumed to be
+        :math:`(-\inf, \inf)`.
+    c : float, optional
+        The transformation function. See Notes for the allowed values for
+        this parameter and their interpretation.
+    cpoints : int, optional
+        The number of construction points. Default is 30.
+    variant : str, optional
+        The variant to use. Available options are:
+
+          * 'ps': PS variant (Default)
+          * 'gw': GW variant
+          * 'ia': IA variant
+
+    seed : int, BitGenerator, Generator, RandomState, SeedSequence, optional
+        Seed for the underlying uniform random number generation.
+
+    Notes
+    -----
+    The transformation of the PDF must be concave in order to
+    construct the hat function. Such a PDF is called T-concave. Currently
+    the following transformations are supported:
+
+    .. math::
+
+        c = 0.: T(x) &= \log(x)\\
+        c = -0.5: T(x) &= \frac{1}{\sqrt{x}} \text{ (Default)}
+
+    Three variants of this method are available:
+
+    * GW: squeezes between construction points.
+    * PS: squeezes proportional to hat function. (Default)
+    * IA: same as variant PS but uses a compositon method with
+      "immediate acceptance" in the region below the squeeze.
+
+    
+    References
+    ----------
+    .. [1] UNU.RAN reference manual, Section 5.3.16,
+           "TDR - Transformed Density Rejection",
+           http://statmath.wu.ac.at/software/unuran/doc/unuran.html#TDR
+
+    Examples
+    --------
+    >>> from scipy.stats.sampling import TransformedDensityRejection
+
+    Suppose we have a density:
+
+    .. math::
+
+        f(x) = \begin{cases}
+                1 - x^2,  &  -1 \leq x \leq 1 \\
+                0,        &  \text{otherwise}
+               \end{cases}
+
+    The derivative of this density function is:
+
+    .. math::
+
+        \frac{df(x)}{dx} = \begin{cases}
+                            -2x,  &  -1 \leq x \leq 1 \\
+                            0,    &  \text{otherwise}
+                           \end{cases}
+
+    Notice that the PDF doesn't integrate to 1. As this is a rejection based
+    method, we need not have a PDF that strictly integrates to 1. To
+    initialize the generator, we can use:
+
+    >>> urng = np.random.default_rng()
+    >>> pdf = lambda x: 1-x*x
+    >>> dpdf = lambda x: -2*x
+    >>> rng = TransformedDensityRejection(pdf, dpdf, domain=(-1, 1),
+    ...                                   seed=urng)
+
+    Now, we can use the `sample` method to generate samples from the
+    distribution:
+
+    >>> rvs = rng.sample(1_000)
+
+    To use the log transformation with 10 construction points and the
+    immediate acceptance variant of the method, do:
+
+    >>> rng = TransformedDensityRejection(pdf, dpdf, domain=(-1, 1), c=0.,
+    ...                                   cpoints=10, variant='ia', seed=urng)
+    >>> rvs = rng.sample(1_000)
+    """
+    cdef object params
+    cdef object pdf
+    cdef object dpdf
+    cdef object _pdf_wrapper
+    cdef object _dpdf_wrapper
+    cdef object _pdf_wrapper_py
+    cdef object _dpdf_wrapper_py
+
+    def __cinit__(self, pdf, dpdf, params=(), domain=None, c=-0.5,
+                  cpoints=30, variant="ps", seed=None):
+        (pdf, dpdf, params, domain, c, cpoints, variant,
+         seed) = self._validate_args(pdf, dpdf, params, domain, c, cpoints,
+                                     variant, seed)
+
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+
+        self.params = params
+        self.pdf = pdf
+        self.dpdf = dpdf
+
+        def _pdf_wrapper_py(x, distr):
+            return self.pdf(x, *self.params)
+
+        def _dpdf_wrapper_py(x, distr):
+            return self.dpdf(x, *self.params)
+
+        self._pdf_wrapper_py = _pdf_wrapper_py
+        self._dpdf_wrapper_py = _dpdf_wrapper_py
+
+        self._pdf_wrapper = _unur_funct_cont_py(self._pdf_wrapper_py)
+        self._dpdf_wrapper = _unur_funct_cont_py(self._dpdf_wrapper_py)
+
+        distr = unur_distr_cont_new()
+        unur_distr_cont_set_pdf(distr,
+            (<cont_func_t *><size_t>ctypes.addressof(
+                    self._pdf_wrapper
+                )
+            )[0]
+        )
+        unur_distr_cont_set_dpdf(distr,
+            (<cont_func_t *><size_t>ctypes.addressof(
+                    self._dpdf_wrapper
+                )
+            )[0]
+        )
+        if domain is not None:
+            unur_distr_cont_set_domain(distr, domain[0], domain[1])
+
+        par = unur_tdr_new(distr)
+        unur_tdr_set_c(par, c)
+        unur_tdr_set_cpoints(par, cpoints, NULL)
+
+        if variant == "ps":
+            unur_tdr_set_variant_ps(par)
+        elif variant == "ia":
+            unur_tdr_set_variant_ia(par)
+        elif variant == "gw":
+            unur_tdr_set_variant_gw(par)
+
+        self._set_rng(seed, par, distr)
+
+    cdef object _validate_args(self, pdf, dpdf, params, domain, c, cpoints,
+                               variant, seed):
+        if not callable(pdf):
+            raise TypeError("`pdf` must be a Python callable.")
+        if not callable(dpdf):
+            raise TypeError("`dpdf` must be a Python callable.")
+        if domain is not None:
+            if np.isnan(domain).any():
+                raise ValueError("`domain` must contain only non-nan "
+                                 "values.")
+            if len(domain) != 2:
+                raise ValueError("`domain` must be a length 2 tuple.")
+            domain = tuple(domain)
+        if np.isnan(c):
+            raise ValueError("`c` must be a non-nan value.")
+        if variant not in {"ps", "gw", "ia"}:
+            raise ValueError("Invalid option for the `variant`.")
+
+        params = tuple(params)
+
+        return pdf, dpdf, params, domain, c, cpoints, variant, seed
+
+    def rvs(self, size=None):
+        """
+        Sample from the distribution.
+
+        Parameters
+        ----------
+        size : int, optional
+            The number of samples. Default is None.
+
+        Returns
+        -------
+        rvs : array_like
+            A NumPy array of random variates.
+        """
+        if size is None:
+            nsamples = 1
+        else:
+            nsamples = np.prod(size)
+        cdef np.float64_t[::1] out = np.empty(nsamples, dtype=np.float64)
+        self._rvs_cont(size, out)
+        if size is None:
+            return np.asarray(out).item()
+        return np.asarray(out).reshape(size)

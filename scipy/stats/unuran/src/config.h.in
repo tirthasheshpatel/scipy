@@ -1,0 +1,243 @@
+/* config.h.in.  Generated from configure.ac by autoheader.  */
+
+/**
+ * Dependencies.
+ * 
+ *   - <unistd.h>              => Enables HAVE_DECL_GETOPT, HAVE_UNISTD_H
+ *   - <dlfcn.h>               => Enables HAVE_DLFCN_H
+ *   - <sys/time.h>            => Enables HAVE_GETTIMEOFDAY, HAVE_SYS_TIME_H, TIME_WITH_SYS_TIME
+ *   - <memory.h>              => Enables HAVE_MEMORY_H
+ *   - <strings.h>             => Enables HAVE_STRCASECMP, HAVE_STRINGS_H
+ *   - <sys/stat.h>            => Enables HAVE_SYS_STAT_H
+ *   - <sys/types.h>           => Enables HAVE_SYS_TYPES_H
+ */
+
+/* Define to 1 if you have the `alarm' function. */
+#undef HAVE_ALARM  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `alarm', and to 0 if you don't.
+   */
+#undef HAVE_DECL_ALARM  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `getopt', and to 0 if you don't.
+   */
+#undef HAVE_DECL_GETOPT  /* <unistd.h> Function ==> need to check if <unistd.h> is present */
+
+/* Define to 1 if you have the declaration of `HUGE_VAL', and to 0 if you
+   don't. */
+#undef HAVE_DECL_HUGE_VAL  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `INFINITY', and to 0 if you
+   don't. */
+#undef HAVE_DECL_INFINITY  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `isfinite', and to 0 if you
+   don't. */
+#undef HAVE_DECL_ISFINITE  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `isinf', and to 0 if you don't.
+   */
+#undef HAVE_DECL_ISINF  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `isnan', and to 0 if you don't.
+   */
+#undef HAVE_DECL_ISNAN  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `log1p', and to 0 if you don't.
+   */
+#undef HAVE_DECL_LOG1P  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `signal', and to 0 if you don't.
+   */
+#undef HAVE_DECL_SIGNAL  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `snprintf', and to 0 if you
+   don't. */
+#undef HAVE_DECL_SNPRINTF  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the declaration of `vsnprintf', and to 0 if you
+   don't. */
+#undef HAVE_DECL_VSNPRINTF  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#undef HAVE_DLFCN_H  /* need to check if <dlfcn.h> is present */
+
+/* Define to 1 if you have the <float.h> header file. */
+#undef HAVE_FLOAT_H  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the `floor' function. */
+#undef HAVE_FLOOR  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the `gettimeofday' function. */
+#undef HAVE_GETTIMEOFDAY  /* <sys/time.h> Function ==> need to check if <sys/time.h> is present */
+
+/* Define to 1 if you have the <gsl/gsl_rng.h> header file. */
+#undef HAVE_GSL_GSL_RNG_H  /* Always define to 0. */
+
+/* Define to 1 if "x != x" is true for NaNs */
+#undef HAVE_IEEE_COMPARISONS  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H  /* C99 Standard Library ==> include C99 flag while compling */
+
+/* Define to 1 if you have the `gsl' library (-lgsl). */
+#undef HAVE_LIBGSL  /* Always define to 0. */
+
+/* Define to 1 if you have the `gslcblas' library (-lgslcblas). */
+#undef HAVE_LIBGSLCBLAS  /* Always define to 0. */
+
+/* Define to 1 if you have the `m' library (-lm). */
+#undef HAVE_LIBM  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the `prng' library (-lprng). */
+#undef HAVE_LIBPRNG  /* Always define to 0. */
+
+/* Define to 1 if you have the `Rmath' library (-lRmath). */
+#undef HAVE_LIBRMATH  /* Always define to 0. */
+
+/* Define to 1 if you have the `rngstreams' library (-lrngstreams). */
+#undef HAVE_LIBRNGSTREAMS  /* Always define to 0. */
+
+/* Define to 1 if you have the <limits.h> header file. */
+#undef HAVE_LIMITS_H  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H  /* <memory.h> Library ==> need to check if <memory.h> is present */
+
+/* Define to 1 if you have the `pow' function. */
+#undef HAVE_POW  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <prng.h> header file. */
+#undef HAVE_PRNG_H  /* Always define to 0. */
+
+/* Define to 1 if you have the <RngStream.h> header file. */
+#undef HAVE_RNGSTREAM_H  /* Always define to 0. */
+
+/* Define to 1 if you have the `signal' function. */
+#undef HAVE_SIGNAL  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the `sqrt' function. */
+#undef HAVE_SQRT  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H  /* C99 Library ==> include C99 flag while compling */
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the `strcasecmp' function. */
+#undef HAVE_STRCASECMP /* Maybe present in <strings.h> ==> need to check if <strings.h> is present */
+
+/* Define to 1 if you have the `strchr' function. */
+#undef HAVE_STRCHR  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H  /* <strings.h> Library ==> need to check if <strings.h> is present */
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H  /* Standard Library ==> always present no need to check */
+
+/* Define to 1 if you have the `strtol' function. */
+#undef HAVE_STRTOL  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the `strtoul' function. */
+#undef HAVE_STRTOUL  /* Standard Library Function ==> always present no need to check */
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H  /* <sys/stat.h> Library ==> need to check if <sys/stat.h> is present */
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+#undef HAVE_SYS_TIME_H  /* <sys/time.h> Library ==> need to check if <sys/time.h> is present */
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H  /* <sys/types.h> Library ==> need to check if <sys/types.h> is present */
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H  /* <unistd.h> Library ==> need to check if <unistd.h> is present */
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR  /* No need to define */
+
+/* Name of package */
+#undef PACKAGE  /* Default behaviour */
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT  /* Default behaviour */
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME  /* Default behaviour */
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING  /* Default behaviour */
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME  /* Default behaviour */
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL  /* Default behaviour */
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION  /* Default behaviour */
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS  /* Define to 1 */
+
+/* Define to 1 if you can safely include both <sys/time.h> and <time.h>. */
+#undef TIME_WITH_SYS_TIME  /* Check if <time.h> and <sys/time.h> both are present */
+
+/* Define to 1 if you use random number generators from GNU Scientific
+   Library. */
+#undef UNURAN_HAS_GSL  /* Always define to 0 */
+
+/* Define to 1 if you use Otmar Lendl's PRNG library. */
+#undef UNURAN_HAS_PRNG  /* Always define to 0 */
+
+/* Define to 1 if you use Pierre L'Ecuyer's RNGSTREAM library. */
+#undef UNURAN_HAS_RNGSTREAM  /* Always define to 0 */
+
+/* Define to 1 if you want to use magic cookies to validate type of a pointer
+   */
+#undef UNUR_COOKIES  /* Always define to 0 */
+
+/* Define to 1 if you want to perform additional checks against an invalid
+   NULL pointer */
+#undef UNUR_ENABLE_CHECKNULL  /* Always define to 0 */
+
+/* Define to 1 if you want to use the info routine for printing informations
+   about UNU.RAN objects */
+#undef UNUR_ENABLE_INFO  /* Always define to 0 */
+
+/* Define to 1 if you want to use a logfile for logging informations about
+   UNU.RAN objects */
+#undef UNUR_ENABLE_LOGGING  /* Always define to 0 */
+
+/* Define to 1 if you use RNGSTREAM as global URNG. */
+#undef UNUR_URNG_DEFAULT_RNGSTREAM  /* Always define to 0 */
+
+/* Define to 1 if you want to use deprecated code. */
+#undef USE_DEPRECATED_CODE  /* Always define to 0 */
+
+/* Define to 1 if you want to use experimental code */
+#undef USE_EXPERIMENTAL_CODE  /* Always define to 0 */
+
+/* Version number of package */
+#undef VERSION
+
+/* Define to empty if `const' does not conform to ANSI C. */
+#undef const
+
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
+#undef inline
+#endif
+
+/* Define to `unsigned int' if <sys/types.h> does not define. */
+#undef size_t
+
+/* Substitute UNU.RAN functions for missing system functions */
+
+#if !HAVE_DECL_LOG1P
+#define log1p _unur_log1p
+#endif
