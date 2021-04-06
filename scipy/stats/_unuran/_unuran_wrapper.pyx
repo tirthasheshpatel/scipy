@@ -28,6 +28,7 @@ cdef extern from "unuran.h":
 
 @cython.boundscheck(False)  # Deactivate bounds checking
 @cython.wraparound(False)   # Deactivate negative indexing.
+@cython.infer_types(True)
 def randn(Py_ssize_t size):
     """Generate random numbers from a standard normal distribution."""
     cdef bitgen_t *_numpy_urng
@@ -68,7 +69,7 @@ def randn(Py_ssize_t size):
     unur_distr_free(distr)
 
     # Start sampling.
-    out = np.empty(size, dtype=np.float64)
+    cdef np.ndarray[np.float64_t, ndim=1] out = np.empty(size, dtype=np.float64)
     cdef Py_ssize_t i
     for i in range(size):
         out[i] = unur_sample_cont(rng)
