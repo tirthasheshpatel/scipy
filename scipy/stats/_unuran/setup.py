@@ -133,7 +133,7 @@ def configuration(parent_package='', top_path=None):
         language='c'
     )
 
-    # config.add_data_files(os.path.join('src', '*.pxd'))
+    config.add_data_files('_unuran_wrapper.pxd')
 
     return config
 

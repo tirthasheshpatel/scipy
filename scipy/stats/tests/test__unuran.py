@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from numpy.testing import assert_allclose
-from scipy.stats._unuran import randn, tdr, dau
+from scipy.stats._unuran import randn, tdr, dau, TDR, DAU
 
 
 def test_randn():
@@ -12,7 +12,7 @@ def test_randn():
     assert_allclose(rvs.std(), 1, atol=1e-2)
 
 
-def test_tdr():
+def test_tdr_functional():
     # A small test to ensure that this is working.
     # See the test case in gh-13051
     from math import exp, sqrt, pow, pi
@@ -23,7 +23,7 @@ def test_tdr():
     assert_allclose(rvs.std(), 0.1, rtol=1e-2, atol=1e-2)
 
 
-def test_dau():
+def test_dau_functional():
     from math import factorial as f
     from math import pow
     # check with PV.
@@ -34,5 +34,33 @@ def test_dau():
     pmf = lambda x, n, p : f(n)/(f(x)*f(n-x)) * pow(p, x)*pow(1-p, n-x)
     n, p = 10, 0.2
     rvs = dau(pmf=pmf, params=(n, p), domain=(0, n), size=100_000)
+    assert_allclose(rvs.mean(), n*p, rtol=1e-2, atol=1e-2)
+    assert_allclose(rvs.var(), n*p*(1-p), rtol=1e-2, atol=1e-2)
+
+def test_tdr_class():
+    # A small test to ensure that this is working.
+    # See the test case in gh-13051
+    # This time, also change the default parameters!
+    from math import exp, sqrt, pow, pi
+    pdf = lambda x: exp(-pow((x/.1), 2) / 2) / sqrt(2*pi*.1)
+    dpdf = lambda x: -x/pow(.1, 2) * pdf(x)
+    rng = TDR(pdf, dpdf, c=0., cpoints=20, variant='gw')
+    rvs = rng.sample(size=100_000)
+    assert_allclose(rvs.mean(), 0, rtol=1e-2, atol=1e-2)
+    assert_allclose(rvs.std(), 0.1, rtol=1e-2, atol=1e-2)
+
+def test_dau_class():
+    from math import factorial as f
+    from math import pow
+    # check with PV.
+    rng = DAU([0.18, 0.02, 0.8], domain=(0, 2))
+    rvs = rng.sample(size=100_000)
+    expected = (0 * 0.18 + 1 * 0.02 + 2 * 0.8)
+    assert_allclose(rvs.mean(), expected, rtol=1e-2, atol=1e-2)
+    # check with PMF.
+    pmf = lambda x, n, p : f(n)/(f(x)*f(n-x)) * pow(p, x)*pow(1-p, n-x)
+    n, p = 10, 0.2
+    rng = DAU(pmf=pmf, params=(n, p), domain=(0, n), urnfactor=2)
+    rvs = rng.sample(size=100_000)
     assert_allclose(rvs.mean(), n*p, rtol=1e-2, atol=1e-2)
     assert_allclose(rvs.var(), n*p*(1-p), rtol=1e-2, atol=1e-2)
