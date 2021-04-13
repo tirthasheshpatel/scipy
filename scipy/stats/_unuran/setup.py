@@ -12,9 +12,10 @@ def _unuran_pre_build_hook(build_clib, build_info):
 
 def _get_sources(dirs):
     sources = []
-    for dir in dirs:
-        files = os.listdir(dir)
-        path = [str(dir / file) for file in files]
+    for dir_ in dirs:
+        files = [file for file in os.listdir(dir_)
+                 if (not os.path.isdir(file))]
+        path = [str(dir_ / file) for file in files]
         sources += [source for source in path if (source.endswith(".c"))]
     return sources
 
@@ -89,17 +90,16 @@ def configuration(parent_package='', top_path=None):
         # ('NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION', None),
     ]
 
-    UNURAN_DIRS = ["src/",
-                   "src/src/",
-                   "src/src/distr/",
-                   "src/src/distributions/",
-                   "src/src/methods/",
-                   "src/src/parser/",
-                   "src/src/specfunct/",
-                   "src/src/uniform/",
-                   "src/src/urng/",
-                   "src/src/utils/",
-                   "src/src/tests/"]
+    UNURAN_DIRS = [os.path.join('src'),
+                   os.path.join('src', 'src'),
+                   os.path.join('src', 'src', 'distr'),
+                   os.path.join('src', 'src', 'distributions'),
+                   os.path.join('src', 'src', 'methods'),
+                   os.path.join('src', 'src', 'parser'),
+                   os.path.join('src', 'src', 'specfunct'),
+                   os.path.join('src', 'src', 'urng'),
+                   os.path.join('src', 'src', 'utils'),
+                   os.path.join('src', 'src', 'tests')]
     UNURAN_DIRS_ = [UNURAN_DIR / dir_ for dir_ in UNURAN_DIRS[2:]]
 
     # Compile UNU.RAN as a static library:
@@ -119,17 +119,7 @@ def configuration(parent_package='', top_path=None):
         '_unuran_wrapper',
         sources=['_unuran_wrapper.c'],
         libraries=['unuran', 'm'],
-        include_dirs=["src/",
-                      "src/src/",
-                      "src/src/distr/",
-                      "src/src/distributions/",
-                      "src/src/methods/",
-                      "src/src/parser/",
-                      "src/src/specfunct/",
-                      "src/src/uniform/",
-                      "src/src/urng/",
-                      "src/src/utils/",
-                      "src/src/tests/"],
+        include_dirs=UNURAN_DIRS,
         language='c'
     )
 

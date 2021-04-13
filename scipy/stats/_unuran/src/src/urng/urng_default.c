@@ -35,22 +35,6 @@
 
 #include <unur_source.h>
 #include "urng.h"
-#include <uniform/urng_builtin.h>
-#include <uniform/urng_fvoid.h>
-#include <uniform/urng_randomshift.h>
-
-#if defined(UNURAN_HAS_GSL) && defined(UNUR_URNG_UNURAN)
-#  include <uniform/urng_gsl.h>
-#  include <uniform/urng_gslqrng.h>
-#endif
-
-#if defined(UNURAN_HAS_PRNG) && defined(UNUR_URNG_UNURAN)
-#  include <uniform/urng_prng.h>
-#endif
-
-#if defined(UNURAN_HAS_RNGSTREAM) && defined(UNUR_URNG_UNURAN)
-#  include <uniform/urng_rngstreams.h>
-#endif
 
 /*---------------------------------------------------------------------------*/
 /* pointer to default uniform random number generator */
@@ -82,19 +66,11 @@ unur_get_default_urng( void )
      /*----------------------------------------------------------------------*/
 {
   /* default generator already running ? */
-  if( urng_default == NULL ) {
-    /* have to initialize default generator first */
-    urng_default = UNUR_URNG_DEFAULT;
-
-    if( urng_default == NULL ) {
-      /* some parameters invalid! */
-      _unur_error("URNG",UNUR_ERR_NULL,"Cannot set default URNG. EXIT !!!");
-      /* we cannot recover from this error */
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  /* return default generator */
+  /* The original implementation has been changed so that
+     UNU.RAN doesn't throw an error when the default URNG
+     isn't found. We don't run into unexpected behaviour
+     because a NumPy BitGenerator is set as the default as
+     soon as UNU.RAN is imported. */
   return (urng_default);
 } /* end of unur_get_default_urng() */
 
@@ -145,19 +121,11 @@ unur_get_default_urng_aux( void )
      /*----------------------------------------------------------------------*/
 {
   /* default generator already running ? */
-  if( urng_aux_default == NULL ) {
-    /* have to initialize default generator first */
-    urng_aux_default = UNUR_URNG_AUX_DEFAULT;
-
-    if( urng_aux_default == NULL ) {
-      /* some parameters invalid! */
-      _unur_error("URNG",UNUR_ERR_NULL,"Cannot set default auxilliary URNG. EXIT !!!");
-      /* we cannot recover from this error */
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  /* return default generator */
+  /* The original implementation has been changed so that
+     UNU.RAN doesn't throw an error when the default URNG
+     isn't found. We don't run into unexpected behaviour
+     because a NumPy BitGenerator is set as the default as
+     soon as UNU.RAN is imported. */
   return (urng_aux_default);
 } /* end of unur_get_default_urng_aux() */
 

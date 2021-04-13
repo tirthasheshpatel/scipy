@@ -112,8 +112,8 @@
 
 #else
 /* use type FVOID (built-in) */
-#  define UNUR_URNG_DEFAULT      (unur_urng_builtin())
-#  define UNUR_URNG_AUX_DEFAULT  (unur_urng_builtin_aux())
+#  define UNUR_URNG_DEFAULT      (NULL)
+#  define UNUR_URNG_AUX_DEFAULT  (NULL)
 #endif
 
 /* However, it is also possible to use any other URNG.                       */

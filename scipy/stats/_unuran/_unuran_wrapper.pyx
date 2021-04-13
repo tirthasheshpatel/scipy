@@ -32,9 +32,8 @@ cdef extern from "unuran.h":
     # =======================================================================
 
     # URNG API
-    # TODO: set NumPy's BitGenerator as default
-    # unur_urng * unur_set_default_urng(unur_urng *urng_new)
-    # unur_urng * unur_set_default_urng_aux(unur_urng *urng_new)
+    unur_urng * unur_set_default_urng(unur_urng *urng_new)
+    unur_urng * unur_set_default_urng_aux(unur_urng *urng_new)
     unur_urng * unur_urng_new(double (*sampler)(void *state), void *state)
     int unur_set_urng(unur_par *par, unur_urng *urng)
 
@@ -86,6 +85,48 @@ cdef extern from "unuran.h":
     void unur_distr_free(unur_distr *distribution)
     void unur_urng_free(unur_urng *urng)
     void unur_free(unur_gen *rng)
+
+
+# ===========================================================================
+# Setting the default URNG and auxilary URNG.
+# ===========================================================================
+
+cdef unur_urng *_default_urng = NULL
+cdef unur_urng *_default_urng_aux = NULL
+# we need this otherwise the NumPy URNG will be
+# garbage collected and the default URNG will be
+# destroyed with it.
+_default_numpy_rng = None
+
+
+def _set_default_urng():
+    cdef bitgen_t *_numpy_urng
+    global _default_urng, _default_urng_aux, _default_numpy_rng
+
+    if _default_numpy_rng is None:
+        _default_numpy_rng = PCG64()
+    _capsule = _default_numpy_rng.capsule
+    cdef const char *_capsule_name = "BitGenerator"
+    if not PyCapsule_IsValid(_capsule, _capsule_name):
+        raise ValueError("Invalid pointer to anon_func_state")
+    _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
+
+    if ( _default_urng == NULL ):
+        # Create a new URNG that UNU.RAN understands
+        _default_urng = unur_urng_new(_numpy_urng.next_double,
+                                    <void *>(_numpy_urng.state))
+
+    if ( _default_urng == NULL ): # error
+        raise RuntimeError("Failed to create the default URNG!")
+
+    unur_set_default_urng(_default_urng)
+    # auxilary default uses the same underlying NumPy URNG.
+    _default_urng_aux = _default_urng
+    unur_set_default_urng_aux(_default_urng_aux)
+
+
+# setup the default URNG.
+_set_default_urng()
 
 
 # ===========================================================================
