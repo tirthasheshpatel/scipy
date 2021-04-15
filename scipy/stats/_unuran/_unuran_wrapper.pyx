@@ -642,9 +642,9 @@ cdef class DAU:
     """
     def __cinit__(self, pv=None, pmf=None, params=(), domain=None,
                   urnfactor=1):
-        if pv and pmf:
+        if (pv is not None) and (pmf is not None):
             raise ValueError("expected either PV or PMF, not both.")
-        if not (pv or pmf):
+        if (pv is None) and (pmf is None):
             raise ValueError("expected at least PV or PMF.")
 
         cdef bitgen_t *_numpy_urng
@@ -655,7 +655,7 @@ cdef class DAU:
         cdef np.ndarray[np.float64_t, ndim=1, mode = 'c'] pv_view
         global _global_pmf, _global_params
 
-        if pv:
+        if (pv is not None):
             pv_view = np.asarray(pv, dtype=np.float64)
             pv_view.setflags(write=False)
 
@@ -677,18 +677,18 @@ cdef class DAU:
 
         # Set the global attributes
         _global_params = params
-        if pmf:
+        if (pmf is not None):
             _global_pmf = pmf
 
         # Create a new distribution and set it's attributes.
         distr = unur_distr_discr_new()
-        if pv:
+        if (pv is not None):
             n_pv = len(pv_view)
             unur_distr_discr_set_pv(distr, <const double *>(pv_view.data),
                                     n_pv)
         else:
             unur_distr_discr_set_pmf(distr, _pmf_wrapper)
-        if domain:
+        if (domain is not None):
             unur_distr_discr_set_domain(distr, domain[0], domain[1])
 
         par = unur_dau_new(distr)
@@ -803,9 +803,9 @@ def dau(pv=None, pmf=None, params=(), domain=None, Py_ssize_t size=1):
     >>> n*p, n*p*(1-p)  # actual mean and variance
     (2.0, 1.6)
     """
-    if pv and pmf:
+    if (pv is not None) and (pmf is not None):
         raise ValueError("expected either PV or PMF, not both.")
-    if not (pv or pmf):
+    if (pv is None) and (pmf is None):
         raise ValueError("expected at least PV or PMF.")
 
     cdef bitgen_t *_numpy_urng
@@ -816,7 +816,7 @@ def dau(pv=None, pmf=None, params=(), domain=None, Py_ssize_t size=1):
     cdef np.ndarray[np.float64_t, ndim=1, mode = 'c'] pv_view
     global _global_pmf, _global_params
 
-    if pv:
+    if (pv is not None):
         pv_view = np.asarray(pv, dtype=np.float64)
         pv_view.setflags(write=False)
 
@@ -842,12 +842,12 @@ def dau(pv=None, pmf=None, params=(), domain=None, Py_ssize_t size=1):
 
     # Set the global attributes
     _global_params = params
-    if pmf:
+    if (pmf is not None):
         _global_pmf = pmf
 
     # Create a new distribution and set it's attributes.
     distr = unur_distr_discr_new()
-    if pv:
+    if (pv is not None):
         n_pv = len(pv_view)
         unur_distr_discr_set_pv(distr, <const double *>(pv_view.data), n_pv)
     else:
@@ -859,7 +859,7 @@ def dau(pv=None, pmf=None, params=(), domain=None, Py_ssize_t size=1):
         #                                                       _pmf_wrapper
         #                                                   ))[0])
         # ===================================================================
-    if domain:
+    if (domain is not None):
         unur_distr_discr_set_domain(distr, domain[0], domain[1])
 
     par = unur_dau_new(distr)
