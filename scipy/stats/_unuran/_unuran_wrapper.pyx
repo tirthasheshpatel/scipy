@@ -10,81 +10,34 @@ from numpy.random cimport bitgen_t
 from numpy.random import PCG64
 
 
-__all__ = ["randn", "tdr", "dau", "TDR", "DAU"]
+__all__ = ["randn", "TDR", "DAU"]
 
 
-# Signature of PDF, etc that UNU.RAN expects.
-ctypedef double (*cont_func_t)(double, const unur_distr *)
+# ===========================================================================
+# Helper Functions
+# ===========================================================================
 
 
-cdef extern from "unuran.h":
-    # =======================================================================
-    # UNU.RAN Structures
-    # =======================================================================
+cdef unur_urng * _get_urng(object numpy_rng):
+    """Get a UNU.RAN URNG using a NumPy Generator."""
+    cdef bitgen_t *numpy_urng
+    cdef unur_urng *unuran_urng
 
-    struct unur_distr  # Distribution Object
-    struct unur_par    # Parameter Object
-    struct unur_gen    # Generator Object
-    struct unur_urng   # URNG Object
+    capsule = numpy_rng.bit_generator.capsule
+    cdef const char *capsule_name = "BitGenerator"
 
-    # =======================================================================
-    # UNU.RAN Core Functionality
-    # =======================================================================
+    if not PyCapsule_IsValid(capsule, capsule_name):
+        raise ValueError("Invalid pointer to anon_func_state.")
 
-    # URNG API
-    unur_urng * unur_set_default_urng(unur_urng *urng_new)
-    unur_urng * unur_set_default_urng_aux(unur_urng *urng_new)
-    unur_urng * unur_urng_new(double (*sampler)(void *state), void *state)
-    int unur_set_urng(unur_par *par, unur_urng *urng)
+    numpy_urng = <bitgen_t *> PyCapsule_GetPointer(capsule, capsule_name)
 
-    # Continuous Distributions
-    unur_distr * unur_distr_cont_new()
-    int unur_distr_cont_set_pdf(unur_distr *distribution,
-                                cont_func_t pdf)
-    int unur_distr_cont_set_dpdf(unur_distr *distribution,
-                                 cont_func_t dpdf)
-    # int unur_distr_cont_set_pdfparams(unur_distr *distribution,
-    #                                   const double *params, int n_params)
-    # int unur_distr_cont_get_pdfparams(const unur_distr *distribution,
-    #                                   const double **params)
-    int unur_distr_cont_set_domain(unur_distr *distribution,
-                                   double left, double right)
-    unur_par * unur_tdr_new(unur_distr *distribution)
-    int unur_tdr_set_c(unur_par *parameters, double c)
-    int unur_tdr_set_variant_ia(unur_par *parameters)
-    int unur_tdr_set_variant_ps(unur_par *parameters)
-    int unur_tdr_set_variant_gw(unur_par *parameters)
-    int unur_tdr_set_cpoints(unur_par *parameters, int n_stp,
-                             const double *stp)
+    unuran_urng = unur_urng_new(numpy_urng.next_double,
+                              <void *>(numpy_urng.state))
 
-    # Discrete Distributions
-    unur_distr * unur_distr_discr_new()
-    int unur_distr_discr_set_pmf(unur_distr *distribution,
-                                 double (*pmf)(int k,
-                                               const unur_distr *distr))
-    # int unur_distr_discr_set_pmfparams(unur_distr *distribution,
-    #                                    const double *params, int n_params)
-    # int unur_distr_discr_get_pmfparams(const unur_distr *distribution,
-    #                                    const double **params)
-    int unur_distr_discr_set_domain(unur_distr *distribution,
-                                    int left, int right)
-    int unur_distr_discr_set_pv(unur_distr *distribution,
-                                const double *pv, int n_pv)
-    unur_par *unur_dau_new(const unur_distr *distribution)
-    int unur_dau_set_urnfactor(unur_par* parameters, double factor)
+    if ( unuran_urng == NULL ):  # error
+        raise RuntimeError("Failed to create a URNG.")
 
-    # Generator and Sampling
-    unur_gen * unur_init(unur_par *par)
-    double unur_sample_cont(unur_gen *rng)
-    int unur_sample_discr(unur_gen *generator)
-
-    # XXX: Only for testing purposes. Need to remove it later
-    unur_distr * unur_distr_normal(double *params, int n_params)
-
-    # Routines to free the allocated distributions and generators
-    void unur_distr_free(unur_distr *distribution)
-    void unur_urng_free(unur_urng *urng)
-    void unur_free(unur_gen *rng)
+    return unuran_urng
 
 
 # ===========================================================================
@@ -100,32 +53,33 @@ _default_numpy_rng = None
 
 
 def _set_default_urng():
-    cdef bitgen_t *_numpy_urng
     global _default_urng, _default_urng_aux, _default_numpy_rng
 
     if _default_numpy_rng is None:
-        _default_numpy_rng = PCG64()
-    _capsule = _default_numpy_rng.capsule
-    cdef const char *_capsule_name = "BitGenerator"
-    if not PyCapsule_IsValid(_capsule, _capsule_name):
-        raise ValueError("Invalid pointer to anon_func_state")
-    _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
+        # if a existing (stale) URNG is found, destroy it.
+        if _default_urng != NULL:
+            unur_urng_free(_default_urng)
+            _default_urng = NULL
 
-    if ( _default_urng == NULL ):
-        # Create a new URNG that UNU.RAN understands
-        _default_urng = unur_urng_new(_numpy_urng.next_double,
-                                    <void *>(_numpy_urng.state))
+        # get a new NumPy RNG.
+        _default_numpy_rng = np.random.default_rng()
 
-    if ( _default_urng == NULL ): # error
-        raise RuntimeError("Failed to create the default URNG!")
+    # try to get a new UNU.RAN URNG.
+    try:
+        _default_urng = _get_urng(_default_numpy_rng)
+    except (RuntimeError, ValueError) as e:
+        msg = "Failed to initialize the default URNG."
+        raise RuntimeError(msg) from e
 
-    unur_set_default_urng(_default_urng)
     # auxilary default uses the same underlying NumPy URNG.
     _default_urng_aux = _default_urng
+
+    # set the defaults for UNU.RAN
+    unur_set_default_urng(_default_urng)
     unur_set_default_urng_aux(_default_urng_aux)
 
 
-# setup the default URNG.
+# setup the default URNG on import.
 _set_default_urng()
 
 
@@ -138,36 +92,25 @@ _set_default_urng()
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.infer_types(True)
-def randn(Py_ssize_t size):
+def randn(Py_ssize_t size, seed=None):
     """Generate random numbers from a standard normal distribution."""
-    cdef bitgen_t *_numpy_urng
+    cdef unur_urng *urng = NULL
+    cdef object numpy_rng
+
     cdef unur_distr *distr
     cdef unur_par *par
     cdef unur_gen *rng
-    cdef unur_urng *urng
-
-    # Initialize NumPy's BitGenerator
-    _numpy_rng = PCG64()
-    _capsule = _numpy_rng.capsule
-    cdef const char *_capsule_name = "BitGenerator"
-    if not PyCapsule_IsValid(_capsule, _capsule_name):
-        raise ValueError("Invalid pointer to anon_func_state")
-    _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
-
-    # Create a new URNG that UNU.RAN understands
-    urng = unur_urng_new(_numpy_urng.next_double,
-                         <void *>(_numpy_urng.state))
-
-    if ( urng == NULL ): # error
-        raise RuntimeError("Failed to create the URNG!")
 
     # Create the standard normal distribution and
     # the parameter object.
     distr = unur_distr_normal(NULL, 0)
     par = unur_tdr_new(distr)
 
-    # Set the NumPy's BitGenerator to sample from.
-    unur_set_urng(par, urng)
+    # If given, set the NumPy's BitGenerator to sample from.
+    if seed is not None:
+        numpy_rng = np.random.default_rng(seed)
+        urng = _get_urng(numpy_rng)
+        unur_set_urng(par, urng)
 
     # Initialize a UNU.RAN random number generator.
     rng = unur_init(par)
@@ -187,7 +130,8 @@ def randn(Py_ssize_t size):
 
     # Free the remaining objects.
     unur_free(rng)
-    unur_urng_free(urng)
+    if urng != NULL:
+        unur_urng_free(urng)
 
     # Return the samples.
     return out
@@ -198,7 +142,7 @@ def randn(Py_ssize_t size):
 # ===========================================================================
 
 
-# XXX: This is bad. I am trying to use ``ctypes`` to convert the
+# XXX: Is this bad? I am trying to use ``ctypes`` to convert the
 #      Python function to Cython function. While I figure it out,
 #      I have used global attributes. Is it OK to do so? I think
 #      it won't be thread safe.
@@ -261,6 +205,8 @@ cdef class TDR:
     variant : str, optional
         The variant to use. Available options are 'ia', 'ps' (default),
         and 'gw'.
+    seed : {None, int, array_like[ints], SeedSequence, BitGenerator, Generator}, optional
+        Seed the generator.
 
     Methods
     -------
@@ -300,70 +246,57 @@ cdef class TDR:
     >>> plt.show()
     """
     def __cinit__(self, pdf, dpdf, params=(), domain=None,
-                  c=-0.5, cpoints=30, variant="ps"):
-        cdef bitgen_t *_numpy_urng
+                  c=-0.5, cpoints=30, variant="ps", seed=None):
+        cdef unur_urng *urng = NULL
+
         cdef unur_distr *distr
         cdef unur_par *par
         cdef unur_gen *rng
-        cdef unur_urng *urng
-
-        # Initialize NumPy's BitGenerator
-        self._numpy_rng = PCG64()
-        _capsule = self._numpy_rng.capsule
-        cdef const char *_capsule_name = "BitGenerator"
-        if not PyCapsule_IsValid(_capsule, _capsule_name):
-            raise ValueError("Invalid pointer to anon_func_state")
-        _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
-
-        # Create a new URNG that UNU.RAN understands
-        urng = unur_urng_new(_numpy_urng.next_double,
-                            <void *>(_numpy_urng.state))
-
-        if ( urng == NULL ): # error
-            raise RuntimeError("Failed to create the URNG!")
-
-        # Set the attributes
-        # self.params = params
-        # self.pdf = pdf
-        # self.dpdf = dpdf
 
         # ===================================================================
         # TODO: Use ctypes to call python functions? The code below works
         #       but is VERY slow!
         # ===================================================================
-        # # Wrap PDF.
-        # def _pdf_wrapper_py(x, distr):
-        #     return self.pdf(x, *self.params)
+        '''
+        # Set the attributes
+        self.params = params
+        self.pdf = pdf
+        self.dpdf = dpdf
 
-        # # Wrap DPDF.
-        # def _dpdf_wrapper_py(x, distr):
-        #     return self.dpdf(x, *self.params)
+        # Wrap PDF.
+        def _pdf_wrapper_py(x, distr):
+            return self.pdf(x, *self.params)
 
-        # self._pdf_wrapper_py = _pdf_wrapper_py
-        # self._dpdf_wrapper_py = _dpdf_wrapper_py
+        # Wrap DPDF.
+        def _dpdf_wrapper_py(x, distr):
+            return self.dpdf(x, *self.params)
 
-        # # Create a new distribution and set it's attributes.
-        # _unur_funct_cont = ctypes.CFUNCTYPE(ctypes.c_double,
-        #                                     ctypes.c_double,
-        #                                     ctypes.c_void_p)
-        # self._pdf_wrapper = _unur_funct_cont(self._pdf_wrapper_py)
-        # self._dpdf_wrapper = _unur_funct_cont(self._dpdf_wrapper_py)
+        self._pdf_wrapper_py = _pdf_wrapper_py
+        self._dpdf_wrapper_py = _dpdf_wrapper_py
 
-        # distr = unur_distr_cont_new()
-        # unur_distr_cont_set_pdf(distr,
-        #     (<cont_func_t *><size_t>ctypes.addressof(
-        #             self._pdf_wrapper
-        #         )
-        #     )[0]
-        # )
-        # unur_distr_cont_set_dpdf(distr,
-        #     (<cont_func_t *><size_t>ctypes.addressof(
-        #             self._dpdf_wrapper
-        #         )
-        #     )[0]
-        # )
-        # if domain:
-        #     unur_distr_cont_set_domain(distr, domain[0], domain[1])
+        # Create a new distribution and set it's attributes.
+        _unur_funct_cont = ctypes.CFUNCTYPE(ctypes.c_double,
+                                            ctypes.c_double,
+                                            ctypes.c_void_p)
+        self._pdf_wrapper = _unur_funct_cont(self._pdf_wrapper_py)
+        self._dpdf_wrapper = _unur_funct_cont(self._dpdf_wrapper_py)
+
+        distr = unur_distr_cont_new()
+        unur_distr_cont_set_pdf(distr,
+            (<cont_func_t *><size_t>ctypes.addressof(
+                    self._pdf_wrapper
+                )
+            )[0]
+        )
+        unur_distr_cont_set_dpdf(distr,
+            (<cont_func_t *><size_t>ctypes.addressof(
+                    self._dpdf_wrapper
+                )
+            )[0]
+        )
+        if domain:
+            unur_distr_cont_set_domain(distr, domain[0], domain[1])
+        '''
         # ===================================================================
 
         # Set the global attributes
@@ -394,12 +327,15 @@ cdef class TDR:
             raise ValueError("Invalid option for the variant!")
 
         # Set the NumPy's BitGenerator to sample from.
-        unur_set_urng(par, urng)
+        if seed is not None:
+            self._numpy_rng = np.random.default_rng(seed)
+            urng = _get_urng(self._numpy_rng)
+            unur_set_urng(par, urng)
 
         # Initialize a UNU.RAN random number generator.
         rng = unur_init(par)
 
-        if (rng == NULL): # error
+        if (rng == NULL):  # error
             raise RuntimeError("Failed to initialize the RNG!")
 
         # Free the distribution as we don't need it anymore.
@@ -439,146 +375,8 @@ cdef class TDR:
     def __dealloc__(self):
         # Free everything.
         unur_free(self._rng)
-        unur_urng_free(self._urng)
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.infer_types(True)
-def tdr(pdf, dpdf, params=(), domain=None, Py_ssize_t size=1):
-    """
-    TDR Method for sampling from continuous distributions.
-
-    Parameters
-    ----------
-    pdf : callable
-        PDF of the distribution. The expected signature is:
-        ``def pdf(x: float, *params) -> float`` where
-        ``params`` are the parameters of the distribution.
-    dpdf : callable
-        Derivative of the PDF of the distribution. Same signature
-        as the PDF.
-    params : {tuple, list}, optional
-        Parameters of the distribution. Default is an empty tuple.
-    domain : {tuple, list}, optional
-        A tuple or a list of two ``float``s. The first represents
-        the lower bound and the second represents the upper bound.
-        Default is negative infinity to infinity.
-    size : int, optional
-        The number of samples to draw from the distribution.
-        Default is 1.
-
-    Returns
-    -------
-    rvs : array_like
-        Samples from the distribution.
-
-    Examples
-    --------
-    >>> from scipy.stats._unuran import tdr
-    
-    Suppose we want to sample from the following distribution:
-
-         /  1 - x*x , |x| ≤ 1
-    x = <
-         \     0    , otherwise
-
-    As this is a continuous distribution and the derivative is easy to
-    obtain, we can use the TDR method:
-
-    >>> rvs = tdr(lambda x: 1 - x*x, lambda x: -2*x, params=(),
-    ...           domain=(-1, 1), size=10000)
-
-    We can verify that the samples are from the expected distribution:
-
-    >>> import matploblib.pyplot as plt
-    >>> pdf = lambda x: 1 - x*x
-    >>> x = np.linspace(-1, 1, 1000)
-    >>> px = pdf(x)
-    >>> plt.plot(x, px)
-    >>> plt.hist(rvs, bins=50, density=True)
-    >>> plt.show()
-    """
-    cdef bitgen_t *_numpy_urng
-    cdef unur_distr *distr
-    cdef unur_par *par
-    cdef unur_gen *rng
-    cdef unur_urng *urng
-    global _global_pdf, _global_dpdf, _global_params
-
-    # Initialize NumPy's BitGenerator
-    _numpy_rng = PCG64()
-    _capsule = _numpy_rng.capsule
-    cdef const char *_capsule_name = "BitGenerator"
-    if not PyCapsule_IsValid(_capsule, _capsule_name):
-        raise ValueError("Invalid pointer to anon_func_state")
-    _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
-
-    # Create a new URNG that UNU.RAN understands
-    urng = unur_urng_new(_numpy_urng.next_double,
-                         <void *>(_numpy_urng.state))
-
-    if ( urng == NULL ): # error
-        raise RuntimeError("Failed to create the URNG!")
-
-    # ==================================================================
-    # TODO: Use ``ctypes`` to convert the Python function to Cython.
-    #       The workaround currently is using global attributes.
-    # ftype = ctypes.CFUNCTYPE(ctypes.c_double, ctypes.c_void_p)
-    # cdef object _pdf_wrapper = ftype(_pdf_wrapper_py)
-    # cdef object _dpdf_wrapper = ftype(_dpdf_wrapper_py)
-    # ==================================================================
-
-    # Set the global attributes
-    _global_params = params
-    _global_pdf = pdf
-    _global_dpdf = dpdf
-
-    # Create a new distribution and set it's attributes.
-    distr = unur_distr_cont_new()
-    unur_distr_cont_set_pdf(distr, _pdf_wrapper)
-    unur_distr_cont_set_dpdf(distr, _dpdf_wrapper)
-    if domain:
-        unur_distr_cont_set_domain(distr, domain[0], domain[1])
-    # ==================================================================
-    # TODO: use Cython functions instead of global wrappers.
-    # unur_distr_cont_set_pdf(distr,
-    #                         (<cont_func_t *><size_t>ctypes.addressof(
-    #                                                     _pdf_wrapper
-    #                                                 ))[0])
-    # unur_distr_cont_set_dpdf(distr,
-    #                          (<cont_func_t *><size_t>ctypes.addressof(
-    #                                                      _dpdf_wrapper
-    #                                                  ))[0])
-    # ==================================================================
-
-    par = unur_tdr_new(distr)
-
-    # Set the NumPy's BitGenerator to sample from.
-    unur_set_urng(par, urng)
-
-    # Initialize a UNU.RAN random number generator.
-    rng = unur_init(par)
-
-    if (rng == NULL): # error
-        raise RuntimeError("Failed to initialize the RNG!")
-
-    # Free the distribution as we don't need it anymore.
-    unur_distr_free(distr)
-
-    # Start sampling.
-    cdef np.ndarray[np.float64_t, ndim=1] out = np.empty(size,
-                                                         dtype=np.float64)
-    cdef Py_ssize_t i
-    for i in range(size):
-        out[i] = unur_sample_cont(rng)
-
-    # Free the remaining objects.
-    unur_free(rng)
-    unur_urng_free(urng)
-
-    # Return the samples.
-    return out
+        if self._urng != NULL:
+            unur_urng_free(self._urng)
 
 
 # ===========================================================================
@@ -609,6 +407,8 @@ cdef class DAU:
     urnfactor : int, optional
         Set size of urn table relative to length of the probability vector.
         Default is 1.
+    seed : {None, int, array_like[ints], SeedSequence, BitGenerator, Generator}, optional
+        Seed the generator.
 
     Examples
     --------
@@ -641,39 +441,22 @@ cdef class DAU:
     (2.0, 1.6)
     """
     def __cinit__(self, pv=None, pmf=None, params=(), domain=None,
-                  urnfactor=1):
+                  urnfactor=1, seed=None):
         if (pv is not None) and (pmf is not None):
             raise ValueError("expected either PV or PMF, not both.")
         if (pv is None) and (pmf is None):
             raise ValueError("expected at least PV or PMF.")
 
-        cdef bitgen_t *_numpy_urng
         cdef unur_distr *distr
         cdef unur_par *par
         cdef unur_gen *rng
-        cdef unur_urng *urng
+        cdef unur_urng *urng = NULL
         cdef np.ndarray[np.float64_t, ndim=1, mode = 'c'] pv_view
         global _global_pmf, _global_params
 
         if (pv is not None):
             pv_view = np.asarray(pv, dtype=np.float64)
             pv_view.setflags(write=False)
-
-        # Initialize NumPy's BitGenerator
-        self._numpy_rng = PCG64()
-        _capsule = self._numpy_rng.capsule
-        cdef const char *_capsule_name = "BitGenerator"
-        if not PyCapsule_IsValid(_capsule, _capsule_name):
-            raise ValueError("Invalid pointer to anon_func_state")
-        _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule,
-                                                        _capsule_name)
-
-        # Create a new URNG that UNU.RAN understands
-        urng = unur_urng_new(_numpy_urng.next_double,
-                             <void *>(_numpy_urng.state))
-
-        if ( urng == NULL ): # error
-            raise RuntimeError("Failed to create the URNG!")
 
         # Set the global attributes
         _global_params = params
@@ -694,8 +477,11 @@ cdef class DAU:
         par = unur_dau_new(distr)
         unur_dau_set_urnfactor(par, urnfactor)
 
-        # Set the NumPy's BitGenerator to sample from.
-        unur_set_urng(par, urng)
+        # If given, set the NumPy's BitGenerator to sample from.
+        if seed is not None:
+            self._numpy_rng = np.random.default_rng(seed)
+            urng = _get_urng(self._numpy_rng)
+            unur_set_urng(par, urng)
 
         # Initialize a UNU.RAN random number generator.
         rng = unur_init(par)
@@ -740,152 +526,5 @@ cdef class DAU:
     def __dealloc__(self):
         # Free everything.
         unur_free(self._rng)
-        unur_urng_free(self._urng)
-
-
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.infer_types(True)
-def dau(pv=None, pmf=None, params=(), domain=None, Py_ssize_t size=1):
-    """
-    DAU Method for sampling from continuous distributions.
-
-    Parameters
-    ----------
-    pv : array_like, optional
-        Probability vector. If probability vector is not available,
-        PMF is expected. Default is None.
-    pmf : callable, optional
-        PMF of the distribution. The expected signature is:
-        ``def pmf(k: int, *params) -> float`` where
-        ``params`` are the parameters of the distribution. Only required
-        if the probability vector is not available. Default is None.
-    params : {tuple, list}, optional
-        Parameters of the distribution. Default is an empty tuple.
-    domain : {tuple, list}, optional
-        A tuple or a list of two ``float``s. The first represents
-        the lower bound and the second represents the upper bound.
-        Default is negative infinity to infinity.
-    size : int, optional
-        The number of samples to draw from the distribution.
-        Default is 1.
-
-    Returns
-    -------
-    rvs : array_like
-        Samples from the distribution.
-
-    Examples
-    --------
-    >>> from scipy.stats._unuran import dau
-    
-    DAU accepts either a Probability Vector (PV) or the Probability
-    Mass Function (PMF) of the discrete distribution. Say, we have a
-    probability vector ``[0.18, 0.02, 0.8]``. We can use the DAU method
-    to sample from this distribution:
-
-    >>> rvs = dau([0.18, 0.02, 0.8], domain=(0, 2), size=10000)
-    >>> rvs.mean()  # mean of the random variates.
-    1.6257  # may vary
-    >>> (0 * 0.18 + 1 * 0.02 + 2 * 0.8)  # mean of the actual distribution.
-    1.62
-
-    On the other hand, if a probability vector is not available, we can use
-    a PMF:
-
-    >>> from math import factorial as f
-    >>> from math import pow
-    >>> pmf = lambda x, n, p : f(n)/(f(x)*f(n-x)) * pow(p, x)*pow(1-p, n-x)
-    >>> n, p = 10, 0.2
-    >>> rvs = dau(pmf=pmf, params=(n, p), domain=(0, n), size=10000)
-    >>> rvs.mean(), rvs.var()  # mean and variance of the random variates.
-    (2.0088, 1.6161225600000002)  # may vary
-    >>> n*p, n*p*(1-p)  # actual mean and variance
-    (2.0, 1.6)
-    """
-    if (pv is not None) and (pmf is not None):
-        raise ValueError("expected either PV or PMF, not both.")
-    if (pv is None) and (pmf is None):
-        raise ValueError("expected at least PV or PMF.")
-
-    cdef bitgen_t *_numpy_urng
-    cdef unur_distr *distr
-    cdef unur_par *par
-    cdef unur_gen *rng
-    cdef unur_urng *urng
-    cdef np.ndarray[np.float64_t, ndim=1, mode = 'c'] pv_view
-    global _global_pmf, _global_params
-
-    if (pv is not None):
-        pv_view = np.asarray(pv, dtype=np.float64)
-        pv_view.setflags(write=False)
-
-    # Initialize NumPy's BitGenerator
-    _numpy_rng = PCG64()
-    _capsule = _numpy_rng.capsule
-    cdef const char *_capsule_name = "BitGenerator"
-    if not PyCapsule_IsValid(_capsule, _capsule_name):
-        raise ValueError("Invalid pointer to anon_func_state")
-    _numpy_urng = <bitgen_t *> PyCapsule_GetPointer(_capsule, _capsule_name)
-
-    # Create a new URNG that UNU.RAN understands
-    urng = unur_urng_new(_numpy_urng.next_double,
-                         <void *>(_numpy_urng.state))
-
-    if ( urng == NULL ): # error
-        raise RuntimeError("Failed to create the URNG!")
-
-    # ==================================================================
-    # TODO: Use ``ctypes`` to convert the Python function to Cython.
-    #       The workaround currently is using global attributes.
-    # ==================================================================
-
-    # Set the global attributes
-    _global_params = params
-    if (pmf is not None):
-        _global_pmf = pmf
-
-    # Create a new distribution and set it's attributes.
-    distr = unur_distr_discr_new()
-    if (pv is not None):
-        n_pv = len(pv_view)
-        unur_distr_discr_set_pv(distr, <const double *>(pv_view.data), n_pv)
-    else:
-        unur_distr_discr_set_pmf(distr, _pmf_wrapper)
-        # ===================================================================
-        # TODO: use Cython functions instead of global wrappers.
-        # unur_distr_discr_set_pmf(distr,
-        #                          (<discr_func_t *><size_t>ctypes.addressof(
-        #                                                       _pmf_wrapper
-        #                                                   ))[0])
-        # ===================================================================
-    if (domain is not None):
-        unur_distr_discr_set_domain(distr, domain[0], domain[1])
-
-    par = unur_dau_new(distr)
-
-    # Set the NumPy's BitGenerator to sample from.
-    unur_set_urng(par, urng)
-
-    # Initialize a UNU.RAN random number generator.
-    rng = unur_init(par)
-
-    if (rng == NULL): # error
-        raise RuntimeError("Failed to initialize the RNG!")
-
-    # Free the distribution as we don't need it anymore.
-    unur_distr_free(distr)
-
-    # Start sampling.
-    cdef np.ndarray[np.int32_t, ndim=1] out = np.empty(size,
-                                                       dtype=np.int32)
-    cdef Py_ssize_t i
-    for i in range(size):
-        out[i] = unur_sample_discr(rng)
-
-    # Free the remaining objects.
-    unur_free(rng)
-    unur_urng_free(urng)
-
-    # Return the samples.
-    return out
+        if self._urng != NULL:
+            unur_urng_free(self._urng)
