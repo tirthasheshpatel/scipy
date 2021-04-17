@@ -1,7 +1,7 @@
 # cython: language_level=3
 
 
-DEF NPY_OLD = False
+DEF NPY_OLD = {NPY_OLD}
 
 
 cimport cython
@@ -17,6 +17,7 @@ __all__ = ["randn", "TDR", "DAU"]
 # ===========================================================================
 # Helper Functions
 # ===========================================================================
+
 
 IF not NPY_OLD:
     from numpy.random cimport bitgen_t
@@ -55,18 +56,18 @@ ELSE:
             return seed
         return np.random.RandomState(seed)
 
-    cdef double _global_next_double(void *state):
+    cdef double _next_double(void *state):
         global _global_old_numpy_rng
         return _global_old_numpy_rng.uniform()
 
     cdef unur_urng * _get_urng(object numpy_rng):
         """Get a UNU.RAN URNG using a NumPy RandomState."""
         cdef unur_urng *unuran_urng
-        global _global_old_numpy_rng, _global_next_double
+        global _global_old_numpy_rng, _next_double
 
         _global_old_numpy_rng = numpy_rng
 
-        unuran_urng = unur_urng_new(_global_next_double, NULL)
+        unuran_urng = unur_urng_new(_next_double, NULL)
 
         if ( unuran_urng == NULL ):  # error
             raise RuntimeError("Failed to create a URNG.")
@@ -77,6 +78,7 @@ ELSE:
 # ===========================================================================
 # Setting the default URNG and auxilary URNG.
 # ===========================================================================
+
 
 cdef unur_urng *_default_urng = NULL
 cdef unur_urng *_default_urng_aux = NULL
@@ -211,6 +213,7 @@ cdef double _pmf_wrapper(int k, const unur_distr *distr):
 # ===========================================================================
 # TDR method for sampling from continuous distributions.
 # ===========================================================================
+
 
 cdef class TDR:
     """

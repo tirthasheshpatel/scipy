@@ -278,6 +278,7 @@ scipy/stats/biasedurn.cxx
 scipy/stats/biasedurn.pyx
 scipy/stats/_sobol.c
 scipy/stats/_unuran/_unuran_wrapper.c
+scipy/stats/_unuran/_unuran_wrapper.pyx
 scipy/stats/_qmc_cy.cxx
 scipy/version.py
 scipy/special/_exprel.c
