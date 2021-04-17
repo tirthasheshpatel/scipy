@@ -1,6 +1,9 @@
+import numpy as np
+cimport numpy as np
+
 # Signature of PDF, etc that UNU.RAN expects.
 ctypedef double (*cont_func_t)(double, const unur_distr *)
-
+ctypedef double (*discr_func_t)(int, const unur_distr *)
 
 cdef extern from "unuran.h":
     # =======================================================================
@@ -45,8 +48,7 @@ cdef extern from "unuran.h":
     # Discrete Distributions
     unur_distr * unur_distr_discr_new()
     int unur_distr_discr_set_pmf(unur_distr *distribution,
-                                 double (*pmf)(int k,
-                                               const unur_distr *distr))
+                                 discr_func_t pmf)
     # int unur_distr_discr_set_pmfparams(unur_distr *distribution,
     #                                    const double *params, int n_params)
     # int unur_distr_discr_get_pmfparams(const unur_distr *distribution,
@@ -72,9 +74,15 @@ cdef extern from "unuran.h":
     void unur_free(unur_gen *rng)
 
 
-cdef class TDR:
+cdef class Method:
     cdef unur_gen *_rng
     cdef unur_urng *_urng
+    cdef public object _numpy_rng
+    cdef void _set_rng(self, object seed, unur_par *par, unur_distr *distr)
+    cdef np.ndarray[np.float64_t, ndim=1] _sample_cont(self,
+                                                       Py_ssize_t size)
+    cdef np.ndarray[np.int32_t, ndim=1] _sample_discr(self,
+                                                      Py_ssize_t size)
     # cdef object params
     # cdef object pdf
     # cdef object dpdf
@@ -82,10 +90,10 @@ cdef class TDR:
     # cdef object _dpdf_wrapper
     # cdef object _pdf_wrapper_py
     # cdef object _dpdf_wrapper_py
-    cdef public object _numpy_rng
+
+cdef class TDR(Method):
+    pass
 
 
-cdef class DAU:
-    cdef unur_gen *_rng
-    cdef unur_urng *_urng
-    cdef public object _numpy_rng
+cdef class DAU(Method):
+    pass

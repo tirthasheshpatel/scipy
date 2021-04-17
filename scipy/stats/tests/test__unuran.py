@@ -36,7 +36,7 @@ def test_dau():
     # check with PMF.
     pmf = lambda x, n, p : f(n)/(f(x)*f(n-x)) * pow(p, x)*pow(1-p, n-x)
     n, p = 10, 0.2
-    rng = DAU(pmf=pmf, params=(n, p), domain=(0, n), urnfactor=2)
+    rng = DAU(pmf, params=(n, p), domain=(0, n), urnfactor=2)
     rvs = rng.sample(size=100_000)
     assert_allclose(rvs.mean(), n*p, rtol=1e-2, atol=1e-2)
     assert_allclose(rvs.var(), n*p*(1-p), rtol=1e-2, atol=1e-2)

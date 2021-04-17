@@ -63,7 +63,7 @@ ELSE:
     cdef unur_urng * _get_urng(object numpy_rng):
         """Get a UNU.RAN URNG using a NumPy RandomState."""
         cdef unur_urng *unuran_urng
-        global _global_old_numpy_rng, _next_double
+        global _global_old_numpy_rng
 
         _global_old_numpy_rng = numpy_rng
 
@@ -177,11 +177,6 @@ def randn(Py_ssize_t size, seed=None):
 # Global Attributes.
 # ===========================================================================
 
-
-# XXX: Is this bad? I am trying to use ``ctypes`` to convert the
-#      Python function to Cython function. While I figure it out,
-#      I have used global attributes. Is it OK to do so? I think
-#      it won't be thread safe.
 _global_params = None
 
 # For continuous distributions
@@ -211,11 +206,75 @@ cdef double _pmf_wrapper(int k, const unur_distr *distr):
 
 
 # ===========================================================================
+# Base class for all the methods.
+# ===========================================================================
+
+cdef class Method:
+    cdef void _set_rng(self, object seed, unur_par *par, unur_distr *distr):
+        cdef unur_urng *urng = NULL
+
+        # If given, set a new NumPy's BitGenerator as the URNG.
+        if seed is not None:
+            self._numpy_rng = _get_numpy_rng(seed)
+            urng = _get_urng(self._numpy_rng)
+            unur_set_urng(par, urng)
+
+        # Initialize a UNU.RAN random number generator.
+        rng = unur_init(par)
+
+        if ( rng == NULL ):  # error
+            raise RuntimeError("Failed to initialize the RNG!")
+
+        # Free the distribution as we don't need it anymore.
+        unur_distr_free(distr)
+
+        # python like object for storing RNGs.
+        self._rng = rng
+        self._urng = urng
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef np.ndarray[np.float64_t, ndim=1] _sample_cont(self,
+                                                       Py_ssize_t size):
+        cdef unur_gen *rng = self._rng
+        cdef np.ndarray[np.float64_t, ndim=1] out = \
+            np.empty(size, dtype=np.float64)
+
+        cdef Py_ssize_t i
+        for i in range(size):
+            out[i] = unur_sample_cont(rng)
+
+        # Return the samples.
+        return out
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef np.ndarray[np.int32_t, ndim=1] _sample_discr(self,
+                                                      Py_ssize_t size):
+        cdef unur_gen *rng = self._rng
+        cdef np.ndarray[np.int32_t, ndim=1] out = \
+            np.empty(size, dtype=np.int32)
+
+        cdef Py_ssize_t i
+        for i in range(size):
+            out[i] = unur_sample_discr(rng)
+
+        # Return the samples.
+        return out
+
+    def __dealloc__(self):
+        # Free everything.
+        unur_free(self._rng)
+        if self._urng != NULL:
+            unur_urng_free(self._urng)
+
+
+# ===========================================================================
 # TDR method for sampling from continuous distributions.
 # ===========================================================================
 
 
-cdef class TDR:
+cdef class TDR(Method):
     """
     TDR Method for sampling from continuous distributions.
 
@@ -284,7 +343,6 @@ cdef class TDR:
     """
     def __cinit__(self, pdf, dpdf, params=(), domain=None,
                   c=-0.5, cpoints=30, variant="ps", seed=None):
-        cdef unur_urng *urng = NULL
 
         cdef unur_distr *distr
         cdef unur_par *par
@@ -292,7 +350,8 @@ cdef class TDR:
 
         # ===================================================================
         # TODO: Use ctypes to call python functions? The code below works
-        #       but is VERY slow!
+        #       but is VERY slow! Alternatively, the global functions work
+        #       just fine.
         # ===================================================================
         '''
         # Set the attributes
@@ -342,16 +401,19 @@ cdef class TDR:
         _global_pdf = pdf
         _global_dpdf = dpdf
 
-        # Create a new distribution and set it's attributes.
+        # Create a new distribution.
         distr = unur_distr_cont_new()
+
+        # Set the methods of the `distr` object.
         unur_distr_cont_set_pdf(distr, _pdf_wrapper)
         unur_distr_cont_set_dpdf(distr, _dpdf_wrapper)
         if domain:
             unur_distr_cont_set_domain(distr, domain[0], domain[1])
 
+        # Create a new method object.
         par = unur_tdr_new(distr)
 
-        # Change the attributes of the parameter object.
+        # Set the attributes of the parameter object.
         unur_tdr_set_c(par, c)
         unur_tdr_set_cpoints(par, cpoints, NULL)
         if variant == "ps":
@@ -363,27 +425,9 @@ cdef class TDR:
         else:
             raise ValueError("Invalid option for the variant!")
 
-        # Set the NumPy's BitGenerator to sample from.
-        if seed is not None:
-            self._numpy_rng = _get_numpy_rng(seed)
-            urng = _get_urng(self._numpy_rng)
-            unur_set_urng(par, urng)
+        # Create a UNU.RAN RNG using the seed and the parameter object.
+        self._set_rng(seed, par, distr)
 
-        # Initialize a UNU.RAN random number generator.
-        rng = unur_init(par)
-
-        if (rng == NULL):  # error
-            raise RuntimeError("Failed to initialize the RNG!")
-
-        # Free the distribution as we don't need it anymore.
-        unur_distr_free(distr)
-
-        # python like object for storing RNGs.
-        self._rng = rng
-        self._urng = urng
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
     def sample(self, Py_ssize_t size=1):
         """
         Sample from the distribution.
@@ -398,22 +442,7 @@ cdef class TDR:
         rvs : array_like with shape (size,)
             One dimensional NumPy array of random variates.
         """
-        # Start sampling.
-        cdef unur_gen *rng = self._rng
-        cdef np.ndarray[np.float64_t, ndim=1] out = \
-            np.empty(size, dtype=np.float64)
-        cdef Py_ssize_t i
-        for i in range(size):
-            out[i] = unur_sample_cont(rng)
-
-        # Return the samples.
-        return out
-
-    def __dealloc__(self):
-        # Free everything.
-        unur_free(self._rng)
-        if self._urng != NULL:
-            unur_urng_free(self._urng)
+        return self._sample_cont(size)
 
 
 # ===========================================================================
@@ -421,26 +450,25 @@ cdef class TDR:
 # ===========================================================================
 
 
-cdef class DAU:
+cdef class DAU(Method):
     """
     DAU Method for sampling from continuous distributions.
 
     Parameters
     ----------
-    pv : array_like, optional
-        Probability vector. If probability vector is not available,
-        PMF is expected. Default is None.
-    pmf : callable, optional
-        PMF of the distribution. The expected signature is:
+    pv_or_pmf : array_like or callable
+        Probability vector. If probability vector is not available, PMF is
+        expected. PMF of the distribution. The expected signature is:
         ``def pmf(k: int, *params) -> float`` where
-        ``params`` are the parameters of the distribution. Only required
-        if the probability vector is not available. Default is None.
+        ``params`` are the parameters of the distribution.
     params : tuple, list, optional
         Parameters of the distribution. Default is an empty tuple.
+        Used only if a PMF is given. Ignored otherwise.
     domain : tuple, list, optional
         A tuple or a list of two ``float``s. The first represents
         the lower bound and the second represents the upper bound.
-        Default is negative infinity to infinity.
+        Default is None. The domain MUST be finite and non-None when
+        PV is not available.
     urnfactor : int, optional
         Set size of urn table relative to length of the probability vector.
         Default is 1.
@@ -450,7 +478,7 @@ cdef class DAU:
     Examples
     --------
     >>> from scipy.stats._unuran import DAU
-    
+
     DAU accepts either a Probability Vector (PV) or the Probability
     Mass Function (PMF) of the discrete distribution. Say, we have a
     probability vector ``[0.18, 0.02, 0.8]``. We can use the DAU method
@@ -464,7 +492,7 @@ cdef class DAU:
     1.62
 
     On the other hand, if a probability vector is not available, we can use
-    a PMF:
+    a PMF along with a finite domain:
 
     >>> from math import factorial as f
     >>> from math import pow
@@ -477,17 +505,19 @@ cdef class DAU:
     >>> n*p, n*p*(1-p)  # actual mean and variance
     (2.0, 1.6)
     """
-    def __cinit__(self, pv=None, pmf=None, params=(), domain=None,
+    def __cinit__(self, pv_or_pmf, params=(), domain=None,
                   urnfactor=1, seed=None):
-        if (pv is not None) and (pmf is not None):
-            raise ValueError("expected either PV or PMF, not both.")
-        if (pv is None) and (pmf is None):
-            raise ValueError("expected at least PV or PMF.")
+        if callable(pv_or_pmf):
+            pmf = pv_or_pmf
+            pv = None
+        else:
+            pv = pv_or_pmf
+            pmf = None
 
         cdef unur_distr *distr
         cdef unur_par *par
         cdef unur_gen *rng
-        cdef unur_urng *urng = NULL
+
         cdef np.ndarray[np.float64_t, ndim=1, mode = 'c'] pv_view
         global _global_pmf, _global_params
 
@@ -514,27 +544,9 @@ cdef class DAU:
         par = unur_dau_new(distr)
         unur_dau_set_urnfactor(par, urnfactor)
 
-        # If given, set the NumPy's BitGenerator to sample from.
-        if seed is not None:
-            self._numpy_rng = _get_numpy_rng(seed)
-            urng = _get_urng(self._numpy_rng)
-            unur_set_urng(par, urng)
+        # Create a UNU.RAN RNG using the seed and the parameter object.
+        self._set_rng(seed, par, distr)
 
-        # Initialize a UNU.RAN random number generator.
-        rng = unur_init(par)
-
-        if (rng == NULL): # error
-            raise RuntimeError("Failed to initialize the RNG!")
-
-        # Free the distribution as we don't need it anymore.
-        unur_distr_free(distr)
-
-        # python like object for storing RNGs.
-        self._rng = rng
-        self._urng = urng
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
     def sample(self, Py_ssize_t size=1):
         """
         Sample from the distribution.
@@ -549,19 +561,4 @@ cdef class DAU:
         rvs : array_like with shape (size,)
             One dimensional NumPy array of random variates.
         """
-        # Start sampling.
-        cdef unur_gen *rng = self._rng
-        cdef np.ndarray[np.int32_t, ndim=1] out = \
-            np.empty(size, dtype=np.int32)
-        cdef Py_ssize_t i
-        for i in range(size):
-            out[i] = unur_sample_discr(rng)
-
-        # Return the samples.
-        return out
-
-    def __dealloc__(self):
-        # Free everything.
-        unur_free(self._rng)
-        if self._urng != NULL:
-            unur_urng_free(self._urng)
+        return self._sample_discr(size)
