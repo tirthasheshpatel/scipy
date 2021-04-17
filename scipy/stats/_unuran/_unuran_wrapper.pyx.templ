@@ -23,7 +23,10 @@ IF not NPY_OLD:
     from numpy.random cimport bitgen_t
     from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
 
-    _get_numpy_rng = np.random.default_rng
+    cdef object _get_numpy_rng(object seed = None):
+        if isinstance(seed, np.random.RandomState):
+            return np.random.default_rng(seed._bit_generator)
+        return np.random.default_rng(seed)
 
     cdef unur_urng * _get_urng(object numpy_rng):
         """Get a UNU.RAN URNG using a NumPy Generator."""
@@ -210,7 +213,8 @@ cdef double _pmf_wrapper(int k, const unur_distr *distr):
 # ===========================================================================
 
 cdef class Method:
-    cdef void _set_rng(self, object seed, unur_par *par, unur_distr *distr):
+    cdef void _set_rng(self, object seed, unur_par *par,
+                       unur_distr *distr) except *:
         cdef unur_urng *urng = NULL
 
         # If given, set a new NumPy's BitGenerator as the URNG.
@@ -223,7 +227,7 @@ cdef class Method:
         rng = unur_init(par)
 
         if ( rng == NULL ):  # error
-            raise RuntimeError("Failed to initialize the RNG!")
+            raise RuntimeError("Failed to initialize the RNG.")
 
         # Free the distribution as we don't need it anymore.
         unur_distr_free(distr)
@@ -234,12 +238,13 @@ cdef class Method:
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef np.ndarray[np.float64_t, ndim=1] _sample_cont(self,
-                                                       Py_ssize_t size):
+    cdef inline np.ndarray[np.float64_t, ndim=1] _sample_cont(
+        self,
+        Py_ssize_t size
+    ):
         cdef unur_gen *rng = self._rng
         cdef np.ndarray[np.float64_t, ndim=1] out = \
             np.empty(size, dtype=np.float64)
-
         cdef Py_ssize_t i
         for i in range(size):
             out[i] = unur_sample_cont(rng)
@@ -249,12 +254,13 @@ cdef class Method:
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef np.ndarray[np.int32_t, ndim=1] _sample_discr(self,
-                                                      Py_ssize_t size):
+    cdef inline np.ndarray[np.int32_t, ndim=1] _sample_discr(
+        self,
+        Py_ssize_t size
+    ):
         cdef unur_gen *rng = self._rng
         cdef np.ndarray[np.int32_t, ndim=1] out = \
             np.empty(size, dtype=np.int32)
-
         cdef Py_ssize_t i
         for i in range(size):
             out[i] = unur_sample_discr(rng)

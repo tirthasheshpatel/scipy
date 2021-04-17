@@ -5,7 +5,7 @@ cimport numpy as np
 ctypedef double (*cont_func_t)(double, const unur_distr *)
 ctypedef double (*discr_func_t)(int, const unur_distr *)
 
-cdef extern from "unuran.h":
+cdef extern from "unuran.h" nogil:
     # =======================================================================
     # UNU.RAN Structures
     # =======================================================================
@@ -78,11 +78,16 @@ cdef class Method:
     cdef unur_gen *_rng
     cdef unur_urng *_urng
     cdef public object _numpy_rng
-    cdef void _set_rng(self, object seed, unur_par *par, unur_distr *distr)
-    cdef np.ndarray[np.float64_t, ndim=1] _sample_cont(self,
-                                                       Py_ssize_t size)
-    cdef np.ndarray[np.int32_t, ndim=1] _sample_discr(self,
-                                                      Py_ssize_t size)
+    cdef void _set_rng(self, object seed, unur_par *par,
+                       unur_distr *distr) except *
+    cdef inline np.ndarray[np.float64_t, ndim=1] _sample_cont(
+        self,
+        Py_ssize_t size
+    )
+    cdef inline np.ndarray[np.int32_t, ndim=1] _sample_discr(
+        self,
+        Py_ssize_t size
+    )
     # cdef object params
     # cdef object pdf
     # cdef object dpdf
