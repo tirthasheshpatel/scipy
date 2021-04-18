@@ -5,7 +5,6 @@ DEF NPY_OLD = {NPY_OLD}
 
 
 cimport cython
-# import ctypes
 
 import numpy as np
 cimport numpy as np
@@ -353,53 +352,6 @@ cdef class TDR(Method):
         cdef unur_distr *distr
         cdef unur_par *par
         cdef unur_gen *rng
-
-        # ===================================================================
-        # TODO: Use ctypes to call python functions? The code below works
-        #       but is VERY slow! Alternatively, the global functions work
-        #       just fine.
-        # ===================================================================
-        '''
-        # Set the attributes
-        self.params = params
-        self.pdf = pdf
-        self.dpdf = dpdf
-
-        # Wrap PDF.
-        def _pdf_wrapper_py(x, distr):
-            return self.pdf(x, *self.params)
-
-        # Wrap DPDF.
-        def _dpdf_wrapper_py(x, distr):
-            return self.dpdf(x, *self.params)
-
-        self._pdf_wrapper_py = _pdf_wrapper_py
-        self._dpdf_wrapper_py = _dpdf_wrapper_py
-
-        # Create a new distribution and set it's attributes.
-        _unur_funct_cont = ctypes.CFUNCTYPE(ctypes.c_double,
-                                            ctypes.c_double,
-                                            ctypes.c_void_p)
-        self._pdf_wrapper = _unur_funct_cont(self._pdf_wrapper_py)
-        self._dpdf_wrapper = _unur_funct_cont(self._dpdf_wrapper_py)
-
-        distr = unur_distr_cont_new()
-        unur_distr_cont_set_pdf(distr,
-            (<cont_func_t *><size_t>ctypes.addressof(
-                    self._pdf_wrapper
-                )
-            )[0]
-        )
-        unur_distr_cont_set_dpdf(distr,
-            (<cont_func_t *><size_t>ctypes.addressof(
-                    self._dpdf_wrapper
-                )
-            )[0]
-        )
-        if domain:
-            unur_distr_cont_set_domain(distr, domain[0], domain[1])
-        '''
-        # ===================================================================
 
         # Set the global attributes
         global _global_pdf, _global_dpdf, _global_params

@@ -31,10 +31,6 @@ cdef extern from "unuran.h":
                                 cont_func_t pdf)
     int unur_distr_cont_set_dpdf(unur_distr *distribution,
                                  cont_func_t dpdf)
-    # int unur_distr_cont_set_pdfparams(unur_distr *distribution,
-    #                                   const double *params, int n_params)
-    # int unur_distr_cont_get_pdfparams(const unur_distr *distribution,
-    #                                   const double **params)
     int unur_distr_cont_set_domain(unur_distr *distribution,
                                    double left, double right)
     unur_par * unur_tdr_new(unur_distr *distribution)
@@ -49,10 +45,6 @@ cdef extern from "unuran.h":
     unur_distr * unur_distr_discr_new()
     int unur_distr_discr_set_pmf(unur_distr *distribution,
                                  discr_func_t pmf)
-    # int unur_distr_discr_set_pmfparams(unur_distr *distribution,
-    #                                    const double *params, int n_params)
-    # int unur_distr_discr_get_pmfparams(const unur_distr *distribution,
-    #                                    const double **params)
     int unur_distr_discr_set_domain(unur_distr *distribution,
                                     int left, int right)
     int unur_distr_discr_set_pv(unur_distr *distribution,
@@ -88,13 +80,6 @@ cdef class Method:
         self,
         Py_ssize_t size
     )
-    # cdef object params
-    # cdef object pdf
-    # cdef object dpdf
-    # cdef object _pdf_wrapper
-    # cdef object _dpdf_wrapper
-    # cdef object _pdf_wrapper_py
-    # cdef object _dpdf_wrapper_py
 
 cdef class TDR(Method):
     pass
