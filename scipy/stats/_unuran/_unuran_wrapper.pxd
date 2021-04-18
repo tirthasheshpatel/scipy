@@ -5,7 +5,7 @@ cimport numpy as np
 ctypedef double (*cont_func_t)(double, const unur_distr *)
 ctypedef double (*discr_func_t)(int, const unur_distr *)
 
-cdef extern from "unuran.h" nogil:
+cdef extern from "unuran.h":
     # =======================================================================
     # UNU.RAN Structures
     # =======================================================================
