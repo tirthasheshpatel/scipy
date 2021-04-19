@@ -14,6 +14,11 @@ def isNPY_OLD():
 def make_unuran():
     '''Substitute True/False values for NPY_OLD Cython build variable.'''
     unuran_base = (pathlib.Path(__file__).parent / '_unuran_wrapper').absolute()
+    error_info = {
+        "err_reason": "",
+        "err_objid": "",
+        "err_errortype": ""
+    }
     with open(unuran_base.with_suffix('.pyx.templ'), 'r') as src:
         contents = src.read()
     with open(unuran_base.with_suffix('.pyx'), 'w') as dest:

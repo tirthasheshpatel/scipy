@@ -5,12 +5,71 @@ DEF NPY_OLD = {NPY_OLD}
 
 
 cimport cython
-
 import numpy as np
 cimport numpy as np
+import warnings
 
 
 __all__ = ["randn", "TDR", "DAU"]
+
+
+# ===========================================================================
+# Error Handling
+# ===========================================================================
+
+
+_global_err_reason = ""
+_global_err_objid = ""
+_global_err_errortype = ""
+
+
+cdef void _error_handler(const char *objid, const char *file,
+                         int line, const char *errortype,
+                         int unur_errno, const char *reason):
+    global _global_err_reason, _global_err_objid, _global_err_errortype
+    _global_err_reason = str(reason.decode("utf-8"))
+    _global_err_objid = str(objid.decode("utf-8"))
+    _global_err_errortype = str(errortype.decode("utf-8"))
+
+
+cdef void _set_error_handler():
+    # use our handler to handle the error.
+    unur_set_error_handler(_error_handler)
+
+
+# Replace UNU.RAN's error handler with our handler.
+_set_error_handler()
+
+
+cdef void _check_error(_errno=None) except *:
+    global _global_err_reason, _global_err_objid, _global_err_errortype
+    cdef str msg
+    if _errno == None:
+        _errno = unur_get_errno()
+        unur_reset_errno()
+    if _errno != 0:
+        msg = str(unur_get_strerror(_errno).decode("utf-8"))
+        if _global_err_errortype == "error":
+            if msg == "":
+                raise ValueError("[object: %s] %d: %s" % (
+                                 _global_err_objid, _errno,
+                                 _global_err_reason
+                                 ))
+            raise ValueError("[object: %s] %d: %s [%s]" % (
+                             _global_err_objid, _errno,
+                             _global_err_reason, msg
+                             ))
+        else:  # warning
+            if msg == "":
+                warnings.warn("[object: %s] %d: %s" % (
+                                  _global_err_objid, _errno,
+                                  _global_err_reason
+                              ), UserWarning)
+            else:
+                warnings.warn("[object: %s] %d: %s [%s]" % (
+                                  _global_err_objid, _errno,
+                                  _global_err_reason, msg
+                              ), UserWarning)
 
 
 # ===========================================================================
@@ -27,7 +86,7 @@ IF not NPY_OLD:
             return np.random.default_rng(seed._bit_generator)
         return np.random.default_rng(seed)
 
-    cdef unur_urng * _get_urng(object numpy_rng):
+    cdef unur_urng * _get_urng(object numpy_rng) except *:
         """Get a UNU.RAN URNG using a NumPy Generator."""
         cdef bitgen_t *numpy_urng
         cdef unur_urng *unuran_urng
@@ -42,9 +101,7 @@ IF not NPY_OLD:
 
         unuran_urng = unur_urng_new(numpy_urng.next_double,
                                     <void *>(numpy_urng.state))
-
-        if ( unuran_urng == NULL ):  # error
-            raise RuntimeError("Failed to create a URNG.")
+        _check_error()
 
         return unuran_urng
 ELSE:
@@ -62,7 +119,7 @@ ELSE:
         global _global_old_numpy_rng
         return _global_old_numpy_rng.uniform()
 
-    cdef unur_urng * _get_urng(object numpy_rng):
+    cdef unur_urng * _get_urng(object numpy_rng) except *:
         """Get a UNU.RAN URNG using a NumPy RandomState."""
         cdef unur_urng *unuran_urng
         global _global_old_numpy_rng
@@ -70,15 +127,13 @@ ELSE:
         _global_old_numpy_rng = numpy_rng
 
         unuran_urng = unur_urng_new(_next_double, NULL)
-
-        if ( unuran_urng == NULL ):  # error
-            raise RuntimeError("Failed to create a URNG.")
+        _check_error()
 
         return unuran_urng
 
 
 # ===========================================================================
-# Setting the default URNG and auxilary URNG.
+# Setting the default and auxilary URNG.
 # ===========================================================================
 
 
@@ -105,7 +160,7 @@ def _set_default_urng():
     # try to get a new UNU.RAN URNG.
     try:
         _default_urng = _get_urng(_default_numpy_rng)
-    except (RuntimeError, ValueError) as e:
+    except ValueError as e:
         msg = "Failed to initialize the default URNG."
         raise RuntimeError(msg) from e
 
@@ -114,7 +169,9 @@ def _set_default_urng():
 
     # set the defaults for UNU.RAN
     unur_set_default_urng(_default_urng)
+    _check_error()
     unur_set_default_urng_aux(_default_urng_aux)
+    _check_error()
 
 
 # setup the default URNG on import.
@@ -143,18 +200,17 @@ def randn(Py_ssize_t size, seed=None):
     # the parameter object.
     distr = unur_distr_normal(NULL, 0)
     par = unur_tdr_new(distr)
+    _check_error()
 
     # If given, set the NumPy's BitGenerator to sample from.
     if seed is not None:
         numpy_rng = _get_numpy_rng(seed)
         urng = _get_urng(numpy_rng)
-        unur_set_urng(par, urng)
+        _check_error(unur_set_urng(par, urng))
 
     # Initialize a UNU.RAN random number generator.
     rng = unur_init(par)
-
-    if (rng == NULL): # error
-        raise RuntimeError("Failed to initialize the RNG!")
+    _check_error()
 
     # Free the distribution as we don't need it anymore.
     unur_distr_free(distr)
@@ -220,13 +276,11 @@ cdef class Method:
         if seed is not None:
             self._numpy_rng = _get_numpy_rng(seed)
             urng = _get_urng(self._numpy_rng)
-            unur_set_urng(par, urng)
+            _check_error(unur_set_urng(par, urng))
 
         # Initialize a UNU.RAN random number generator.
         rng = unur_init(par)
-
-        if ( rng == NULL ):  # error
-            raise RuntimeError("Failed to initialize the RNG.")
+        _check_error()
 
         # Free the distribution as we don't need it anymore.
         unur_distr_free(distr)
@@ -363,17 +417,19 @@ cdef class TDR(Method):
         distr = unur_distr_cont_new()
 
         # Set the methods of the `distr` object.
-        unur_distr_cont_set_pdf(distr, _pdf_wrapper)
-        unur_distr_cont_set_dpdf(distr, _dpdf_wrapper)
+        _check_error(unur_distr_cont_set_pdf(distr, _pdf_wrapper))
+        _check_error(unur_distr_cont_set_dpdf(distr, _dpdf_wrapper))
         if domain:
-            unur_distr_cont_set_domain(distr, domain[0], domain[1])
+            _check_error(unur_distr_cont_set_domain(distr, domain[0],
+                                                    domain[1]))
 
         # Create a new method object.
         par = unur_tdr_new(distr)
+        _check_error()
 
         # Set the attributes of the parameter object.
-        unur_tdr_set_c(par, c)
-        unur_tdr_set_cpoints(par, cpoints, NULL)
+        _check_error(unur_tdr_set_c(par, c))
+        _check_error(unur_tdr_set_cpoints(par, cpoints, NULL))
         if variant == "ps":
             unur_tdr_set_variant_ps(par)
         elif variant == "ia":
@@ -492,15 +548,20 @@ cdef class DAU(Method):
         distr = unur_distr_discr_new()
         if (pv is not None):
             n_pv = len(pv_view)
-            unur_distr_discr_set_pv(distr, <const double *>(pv_view.data),
-                                    n_pv)
+            _check_error(
+                unur_distr_discr_set_pv(distr,
+                                        <const double *>(pv_view.data),
+                                        n_pv)
+            )
         else:
-            unur_distr_discr_set_pmf(distr, _pmf_wrapper)
+            _check_error(unur_distr_discr_set_pmf(distr, _pmf_wrapper))
         if (domain is not None):
-            unur_distr_discr_set_domain(distr, domain[0], domain[1])
+            _check_error(unur_distr_discr_set_domain(distr, domain[0],
+                                                     domain[1]))
 
         par = unur_dau_new(distr)
-        unur_dau_set_urnfactor(par, urnfactor)
+        _check_error()
+        _check_error(unur_dau_set_urnfactor(par, urnfactor))
 
         # Create a UNU.RAN RNG using the seed and the parameter object.
         self._set_rng(seed, par, distr)

@@ -65,6 +65,17 @@ cdef extern from "unuran.h":
     void unur_urng_free(unur_urng *urng)
     void unur_free(unur_gen *rng)
 
+    # Error Handling
+    const char *unur_get_strerror(const int errnocode)
+    ctypedef void UNUR_ERROR_HANDLER(const char *objid, const char *file,
+                                     int line, const char *errortype,
+                                     int unur_errno, const char *reason)
+    UNUR_ERROR_HANDLER *unur_set_error_handler(
+        UNUR_ERROR_HANDLER *new_handler
+    )
+    int unur_get_errno()
+    void unur_reset_errno()
+
 
 cdef class Method:
     cdef unur_gen *_rng
