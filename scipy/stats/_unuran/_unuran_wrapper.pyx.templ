@@ -21,6 +21,7 @@ __all__ = ["TDR", "DAU"]
 _global_err_reason = ""
 _global_err_objid = ""
 _global_err_errortype = ""
+_global_err_eval = None
 
 
 cdef void _error_handler(const char *objid, const char *file,
@@ -42,10 +43,18 @@ _set_error_handler()
 
 cdef void _check_error(_errno=None) except *:
     global _global_err_reason, _global_err_objid, _global_err_errortype
+    global _global_err_eval
     cdef str msg
     if _errno == None:
         _errno = unur_get_errno()
-        unur_reset_errno()
+    unur_reset_errno()
+    if isinstance(_global_err_eval, Exception):
+        try:
+            raise _global_err_eval
+        except Exception as e:
+            raise e
+        finally:
+            _global_err_eval = None
     if _errno != 0:
         msg = str(unur_get_strerror(_errno).decode("utf-8"))
         if _global_err_errortype == "error":
@@ -193,15 +202,36 @@ _global_pmf = None
 
 # Wrap PDF.
 cdef double _pdf_wrapper(double x, const unur_distr *distr):
-    return _global_pdf(x, *_global_params)
+    global _global_pdf
+    try:
+        return _global_pdf(x, *_global_params)
+    except Exception as e:
+        global _global_err_eval
+        _global_err_eval = e
+        _global_pdf = lambda x: -1
+        return -1
 
 # Wrap DPDF.
 cdef double _dpdf_wrapper(double x, const unur_distr *distr):
-    return _global_dpdf(x, *_global_params)
+    global _global_dpdf
+    try:
+        return _global_dpdf(x, *_global_params)
+    except Exception as e:
+        global _global_err_eval
+        _global_err_eval = e
+        _global_dpdf = lambda x: -1
+        return -1
 
 # Wrap PMF.
 cdef double _pmf_wrapper(int k, const unur_distr *distr):
-    return _global_pmf(k, *_global_params)
+    global _global_pmf
+    try:
+        return _global_pmf(k, *_global_params)
+    except Exception as e:
+        global _global_err_eval
+        _global_err_eval = e
+        _global_pmf = lambda x: -1
+        return -1
 
 
 # ===========================================================================
