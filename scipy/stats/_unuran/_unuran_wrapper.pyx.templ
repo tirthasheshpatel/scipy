@@ -10,7 +10,7 @@ cimport numpy as np
 import warnings
 
 
-__all__ = ["randn", "TDR", "DAU"]
+__all__ = ["TDR", "DAU"]
 
 
 # ===========================================================================
@@ -33,7 +33,6 @@ cdef void _error_handler(const char *objid, const char *file,
 
 
 cdef void _set_error_handler():
-    # use our handler to handle the error.
     unur_set_error_handler(_error_handler)
 
 
@@ -51,14 +50,9 @@ cdef void _check_error(_errno=None) except *:
         msg = str(unur_get_strerror(_errno).decode("utf-8"))
         if _global_err_errortype == "error":
             if msg == "":
-                raise ValueError("[object: %s] %d: %s" % (
-                                 _global_err_objid, _errno,
-                                 _global_err_reason
-                                 ))
-            raise ValueError("[object: %s] %d: %s [%s]" % (
-                             _global_err_objid, _errno,
-                             _global_err_reason, msg
-                             ))
+                raise ValueError("%d: %s" % (_errno, _global_err_reason))
+            raise ValueError("%d: %s => %s" % (_errno, _global_err_reason,
+                                               msg))
         else:  # warning
             if msg == "":
                 warnings.warn("[object: %s] %d: %s" % (
@@ -66,7 +60,7 @@ cdef void _check_error(_errno=None) except *:
                                   _global_err_reason
                               ), UserWarning)
             else:
-                warnings.warn("[object: %s] %d: %s [%s]" % (
+                warnings.warn("[object: %s] %d: %s => %s" % (
                                   _global_err_objid, _errno,
                                   _global_err_reason, msg
                               ), UserWarning)
@@ -142,7 +136,7 @@ cdef unur_urng *_default_urng_aux = NULL
 # we need this otherwise the NumPy URNG will be
 # garbage collected and the default URNG will be
 # destroyed with it.
-cdef object _default_numpy_rng = None
+_default_numpy_rng = None
 
 
 def _set_default_urng():
@@ -176,59 +170,6 @@ def _set_default_urng():
 
 # setup the default URNG on import.
 _set_default_urng()
-
-
-# ===========================================================================
-# Testing if UNU.RAN builds properly.
-# ===========================================================================
-
-
-# XXX: This function is present here only for testing purposes.
-@cython.boundscheck(False)
-@cython.wraparound(False)
-@cython.infer_types(True)
-def randn(Py_ssize_t size, seed=None):
-    """Generate random numbers from a standard normal distribution."""
-    cdef unur_urng *urng = NULL
-    cdef object numpy_rng
-
-    cdef unur_distr *distr
-    cdef unur_par *par
-    cdef unur_gen *rng
-
-    # Create the standard normal distribution and
-    # the parameter object.
-    distr = unur_distr_normal(NULL, 0)
-    par = unur_tdr_new(distr)
-    _check_error()
-
-    # If given, set the NumPy's BitGenerator to sample from.
-    if seed is not None:
-        numpy_rng = _get_numpy_rng(seed)
-        urng = _get_urng(numpy_rng)
-        _check_error(unur_set_urng(par, urng))
-
-    # Initialize a UNU.RAN random number generator.
-    rng = unur_init(par)
-    _check_error()
-
-    # Free the distribution as we don't need it anymore.
-    unur_distr_free(distr)
-
-    # Start sampling.
-    cdef np.ndarray[np.float64_t, ndim=1] out = np.empty(size,
-                                                         dtype=np.float64)
-    cdef Py_ssize_t i
-    for i in range(size):
-        out[i] = unur_sample_cont(rng)
-
-    # Free the remaining objects.
-    unur_free(rng)
-    if urng != NULL:
-        unur_urng_free(urng)
-
-    # Return the samples.
-    return out
 
 
 # ===========================================================================
@@ -282,10 +223,9 @@ cdef class Method:
         rng = unur_init(par)
         _check_error()
 
-        # Free the distribution as we don't need it anymore.
+        # Free the distribution. We don't need it anymore.
         unur_distr_free(distr)
 
-        # python like object for storing RNGs.
         self._rng = rng
         self._urng = urng
 
@@ -298,11 +238,11 @@ cdef class Method:
         cdef unur_gen *rng = self._rng
         cdef np.ndarray[np.float64_t, ndim=1] out = \
             np.empty(size, dtype=np.float64)
+
         cdef Py_ssize_t i
         for i in range(size):
             out[i] = unur_sample_cont(rng)
 
-        # Return the samples.
         return out
 
     @cython.boundscheck(False)
@@ -314,16 +254,17 @@ cdef class Method:
         cdef unur_gen *rng = self._rng
         cdef np.ndarray[np.int32_t, ndim=1] out = \
             np.empty(size, dtype=np.int32)
+
         cdef Py_ssize_t i
         for i in range(size):
             out[i] = unur_sample_discr(rng)
 
-        # Return the samples.
         return out
 
     def __dealloc__(self):
         # Free everything.
-        unur_free(self._rng)
+        if self._rng != NULL:
+            unur_free(self._rng)
         if self._urng != NULL:
             unur_urng_free(self._urng)
 
