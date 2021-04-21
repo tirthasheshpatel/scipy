@@ -18,19 +18,28 @@ __all__ = ["TDR", "DAU"]
 # ===========================================================================
 
 
-_global_err_reason = ""
-_global_err_objid = ""
-_global_err_errortype = ""
-_global_err_eval = None
+cdef object _global_err_reason = ""
+cdef object _global_err_objid = ""
+cdef object _global_err_errortype = ""
+cdef object _global_err_eval = None
 
 
 cdef void _error_handler(const char *objid, const char *file,
                          int line, const char *errortype,
                          int unur_errno, const char *reason):
     global _global_err_reason, _global_err_objid, _global_err_errortype
-    _global_err_reason = str(reason.decode("utf-8"))
-    _global_err_objid = str(objid.decode("utf-8"))
-    _global_err_errortype = str(errortype.decode("utf-8"))
+    if reason != NULL:
+        _global_err_reason = str(reason.decode("utf-8"))
+    else:
+        _global_err_reason = "unknown error"
+    if objid != NULL:
+        _global_err_objid = str(objid.decode("utf-8"))
+    else:
+        _global_err_objid = ""
+    if errortype != NULL:
+        _global_err_errortype = str(errortype.decode("utf-8"))
+    else:
+        _global_err_errortype = "error"
 
 
 cdef void _set_error_handler():
@@ -49,12 +58,9 @@ cdef void _check_error(_errno=None) except *:
         _errno = unur_get_errno()
     unur_reset_errno()
     if isinstance(_global_err_eval, Exception):
-        try:
-            raise _global_err_eval
-        except Exception as e:
-            raise e
-        finally:
-            _global_err_eval = None
+        e = _global_err_eval
+        _global_err_eval = None
+        raise e
     if _errno != 0:
         msg = str(unur_get_strerror(_errno).decode("utf-8"))
         if _global_err_errortype == "error":
@@ -145,7 +151,7 @@ cdef unur_urng *_default_urng_aux = NULL
 # we need this otherwise the NumPy URNG will be
 # garbage collected and the default URNG will be
 # destroyed with it.
-_default_numpy_rng = None
+cdef object _default_numpy_rng = None
 
 
 def _set_default_urng():
@@ -185,14 +191,14 @@ _set_default_urng()
 # Global Attributes.
 # ===========================================================================
 
-_global_params = None
+cdef object _global_params = None
 
 # For continuous distributions
-_global_pdf = None
-_global_dpdf = None
+cdef object _global_pdf = None
+cdef object _global_dpdf = None
 
 # For discrete distributions
-_global_pmf = None
+cdef object _global_pmf = None
 
 
 # ===========================================================================
@@ -390,7 +396,9 @@ cdef class TDR(Method):
         # Set the methods of the `distr` object.
         _check_error(unur_distr_cont_set_pdf(distr, _pdf_wrapper))
         _check_error(unur_distr_cont_set_dpdf(distr, _dpdf_wrapper))
-        if domain:
+        if (domain is not None):
+            if np.isnan(domain).any():
+                raise ValueError("domain must contain only non-nan values.")
             _check_error(unur_distr_cont_set_domain(distr, domain[0],
                                                     domain[1]))
 
@@ -399,6 +407,8 @@ cdef class TDR(Method):
         _check_error()
 
         # Set the attributes of the parameter object.
+        if np.isnan(c):
+            raise ValueError("c must be a non-nan value.")
         _check_error(unur_tdr_set_c(par, c))
         _check_error(unur_tdr_set_cpoints(par, cpoints, NULL))
         if variant == "ps":
@@ -408,7 +418,7 @@ cdef class TDR(Method):
         elif variant == "gw":
             unur_tdr_set_variant_gw(par)
         else:
-            raise ValueError("Invalid option for the variant!")
+            raise ValueError("Invalid option for the variant.")
 
         # Create a UNU.RAN RNG using the seed and the parameter object.
         self._set_rng(seed, par, distr)
@@ -527,6 +537,8 @@ cdef class DAU(Method):
         else:
             _check_error(unur_distr_discr_set_pmf(distr, _pmf_wrapper))
         if (domain is not None):
+            if np.isnan(domain).any():
+                raise ValueError("domain must contain only non-nan values.")
             _check_error(unur_distr_discr_set_domain(distr, domain[0],
                                                      domain[1]))
 
