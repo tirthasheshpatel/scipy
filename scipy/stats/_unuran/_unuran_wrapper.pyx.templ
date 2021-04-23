@@ -502,6 +502,8 @@ cdef class DAU(Method):
     """
     def __cinit__(self, pv_or_pmf, params=(), domain=None,
                   urnfactor=1, seed=None):
+        if pv_or_pmf is None:
+            raise ValueError("`pv_or_pmf` must not be None.")
         if callable(pv_or_pmf):
             pmf = pv_or_pmf
             pv = None
@@ -517,7 +519,17 @@ cdef class DAU(Method):
         global _global_pmf, _global_params
 
         if (pv is not None):
-            pv_view = np.asarray(pv, dtype=np.float64)
+            pv_view = np.asarray(pv.copy(), dtype=np.float64)
+            if pv_view.size == 0:
+                raise ValueError("`pv` must have at least one element.")
+            if pv_view.ndim > 1:
+                raise ValueError("`pv` must be a one-dimensional vector.")
+            if np.isnan(pv_view).any():
+                raise ValueError("`pv` must contain only non-nan values.")
+            if not np.isfinite(pv_view).all():
+                raise ValueError("`pv` must contain only finite values.")
+            if (pv_view == 0).all():
+                raise ValueError("`pv` must contain at least one non-zero value.")
             pv_view.setflags(write=False)
 
         # Set the global attributes
@@ -539,6 +551,8 @@ cdef class DAU(Method):
         if (domain is not None):
             if np.isnan(domain).any():
                 raise ValueError("domain must contain only non-nan values.")
+            if not np.isfinite(domain).all():
+                raise ValueError("domain must be finite.")
             _check_error(unur_distr_discr_set_domain(distr, domain[0],
                                                      domain[1]))
 
