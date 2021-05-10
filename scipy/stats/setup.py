@@ -80,8 +80,13 @@ def configuration(parent_package='', top_path=None):
     )
     ext._pre_build_hook = pre_build_hook
 
+<<<<<<< HEAD
     # unuran sobumodule
     config.add_subpackage('_unuran')
+=======
+    # add boost stats distributions
+    config.add_subpackage('_boost')
+>>>>>>> 7ad9f046e3d0ab3c4f5fb01f2b912ed59e2b2232
 
     # Type stubs
     config.add_data_files('*.pyi')
