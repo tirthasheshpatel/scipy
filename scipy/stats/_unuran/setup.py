@@ -101,7 +101,6 @@ def configuration(parent_package="", top_path=None):
         ("PACKAGE_URL", '""'),
         ("PACKAGE_VERSION", '"%s"' % UNURAN_VERSION),
         ("STDC_HEADERS", "1"),
-        ("UNUR_ENABLE_INFO", "1"),
         ("VERSION", '"%s"' % UNURAN_VERSION),
         ("HAVE_CONFIG_H", "1")
     ]

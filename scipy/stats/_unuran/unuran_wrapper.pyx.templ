@@ -22,7 +22,9 @@ import numpy as np
 from scipy.stats._distn_infrastructure import argsreduce
 
 
-__all__ = ['UNURANError', 'TransformedDensityRejection', 'DiscreteAliasUrn']
+__all__ = ['UNURANError', 'TransformedDensityRejection', 'DiscreteAliasUrn', 'AutomaticRatioOfUniforms', 'AdaptiveRejectionSampling',
+           'NumericalInverseHermiteUNURAN', 'InverseTransformedDensityRejection', 'NumericalInverse', 'NaiveRatioOfUniforms',
+           'NumericalInversePolynomial', 'SimpleRatioOfUniforms', 'PiecewiseConstantHatsTable', 'SimpleSetupRejection']
 
 
 cdef extern from "Python.h":
@@ -36,7 +38,9 @@ cdef extern from "unuran_callback.h":
     int release_unuran_callback(ccallback_t *callback) except -1
 
     double pdf_thunk(double x, const unur_distr *distr) nogil
+    double logpdf_thunk(double x, const unur_distr *distr) nogil
     double dpdf_thunk(double x, const unur_distr *distr) nogil
+    double dlogpdf_thunk(double x, const unur_distr *distr) nogil
     double cont_cdf_thunk(double x, const unur_distr *distr) nogil
     double pmf_thunk(int x, const unur_distr *distr) nogil
     double discr_cdf_thunk(int x, const unur_distr *distr) nogil
@@ -259,8 +263,12 @@ cdef void _pack_distr(unur_distr *distr, dict callbacks) except *:
     if unur_distr_is_cont(distr):
         if "pdf" in callbacks:
             unur_distr_cont_set_pdf(distr, pdf_thunk)
+        if "logpdf" in callbacks:
+            unur_distr_cont_set_logpdf(distr, logpdf_thunk)
         if "dpdf" in callbacks:
             unur_distr_cont_set_dpdf(distr, dpdf_thunk)
+        if "dlogpdf" in callbacks:
+            unur_distr_cont_set_dlogpdf(distr, dlogpdf_thunk)
         if "cdf" in callbacks:
             unur_distr_cont_set_cdf(distr, cont_cdf_thunk)
     else:
@@ -754,6 +762,7 @@ cdef class TransformedDensityRejection(Method):
             self._check_errorcode(unur_tdr_set_max_intervals(self.par, max_intervals))
             self._check_errorcode(unur_tdr_set_usecenter(self.par, use_center))
             self._check_errorcode(unur_tdr_set_usemode(self.par, use_mode))
+            self._check_errorcode(unur_tdr_set_guidefactor(self.par, guide_factor))
 
             self._set_rng(seed)
         finally:
@@ -1076,3 +1085,604 @@ cdef class DiscreteAliasUrn(Method):
             pv_view = _validate_pv(pv)
 
         return pv_view, params, domain
+
+
+cdef class AutomaticRatioOfUniforms(Method):
+    def __cinit__(self,
+                  dist,
+                  center=None,
+                  params=(),
+                  domain=None,
+                  cpoints=30,
+                  use_dars=True,
+                  max_sqhratio=0.99,
+                  max_segments=100,
+                  use_center=True,
+                  guide_factor=2,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf", "dpdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if center is not None:
+                self._check_errorcode(unur_distr_cont_set_center(self.distr, center))
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self.par = unur_arou_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            self._check_errorcode(unur_arou_set_cpoints(self.par, cpoints, NULL))
+            self._check_errorcode(unur_arou_set_usedars(self.par, use_dars))
+            self._check_errorcode(unur_arou_set_max_sqhratio(self.par, max_sqhratio))
+            self._check_errorcode(unur_arou_set_max_segments(self.par, max_segments))
+            self._check_errorcode(unur_arou_set_usecenter(self.par, use_center))
+            self._check_errorcode(unur_arou_set_guidefactor(self.par, guide_factor))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class AdaptiveRejectionSampling(Method):
+    def __cinit__(self,
+                  dist,
+                  params=(),
+                  domain=None,
+                  cpoints=2,
+                  max_intervals=200,
+                  max_iter=10000,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["logpdf", "dlogpdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self.par = unur_ars_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            self._check_errorcode(unur_ars_set_cpoints(self.par, cpoints, NULL))
+            self._check_errorcode(unur_ars_set_max_intervals(self.par, max_intervals))
+            self._check_errorcode(unur_ars_set_max_iter(self.par, max_iter))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class NumericalInverseHermiteUNURAN(Method):
+    def __cinit__(self,
+                  dist,
+                  params=(),
+                  domain=None,
+                  order=None,
+                  u_resolution=1e-10,
+                  cpoints=None,
+                  boundary=None,
+                  guide_factor=1,
+                  max_intervals=1000000,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["cdf"], optional_meths=["pdf", "dpdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self.par = unur_hinv_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            if order is not None:
+                self._check_errorcode(unur_hinv_set_order(self.par, order))
+            if boundary is not None:
+                self._check_errorcode(unur_hinv_set_boundary(self.par, boundary[0], boundary[1]))
+            if cpoints is not None:
+                cpoints_array = np.ascontiguousarray(cpoints, dtype='d')
+                if len(cpoints_array) == 0:
+                    raise ValueError("cpoints array can't be a zero-length array.")
+                self._check_errorcode(unur_hinv_set_cpoints(self.par, &cpoints_array[0], len(cpoints_array)))
+            self._check_errorcode(unur_hinv_set_u_resolution(self.par, u_resolution))
+            self._check_errorcode(unur_hinv_set_max_intervals(self.par, max_intervals))
+            self._check_errorcode(unur_hinv_set_guidefactor(self.par, guide_factor))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class InverseTransformedDensityRejection(Method):
+    def __cinit__(self,
+                  dist,
+                  pole,
+                  params=(),
+                  domain=None,
+                  xi=None,
+                  cp=None,
+                  ct=None,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf", "dpdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            unur_distr_cont_set_mode(self.distr, pole)
+
+            self.par = unur_itdr_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            if xi is None:
+                self._check_errorcode(unur_itdr_set_xi(self.par, xi))
+            if cp is None:
+                self._check_errorcode(unur_itdr_set_cp(self.par, cp))
+            if ct is None:
+                self._check_errorcode(unur_itdr_set_ct(self.par, ct))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class NumericalInverse(Method):
+    def __cinit__(self,
+                  dist,
+                  params=(),
+                  domain=None,
+                  method='regula',
+                  max_iter=100,
+                  x_resolution=1e-8,
+                  u_resolution=None,
+                  start=None,
+                  table=None,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["cdf"], optional_meths=["pdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self.par = unur_ninv_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            if method == 'regula':
+                self._check_errorcode(unur_ninv_set_useregula(self.par))
+            elif method == 'newton':
+                self._check_errorcode(unur_ninv_set_usenewton(self.par))
+            elif method == 'bisect':
+                self._check_errorcode(unur_ninv_set_usebisect(self.par))
+            else:
+                raise ValueError(f"unknown method: {method}")
+            self._check_errorcode(unur_ninv_set_max_iter(self.par, max_iter))
+            self._check_errorcode(unur_ninv_set_x_resolution(self.par, x_resolution))
+            if u_resolution is not None:
+                self._check_errorcode(unur_ninv_set_u_resolution(self.par, u_resolution))
+            if table is not None:
+                self._check_errorcode(unur_ninv_set_table(self.par, table))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class NaiveRatioOfUniforms(Method):
+    def __cinit__(self,
+                  dist,
+                  mode=None,
+                  center=None,
+                  params=(),
+                  domain=None,
+                  u=None,
+                  v=None,
+                  r=1,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            if mode is not None:
+                self._check_errorcode(unur_distr_cont_set_mode(self.distr, mode))
+            if center is not None:
+                self._check_errorcode(unur_distr_cont_set_center(self.distr, center))
+
+            self.par = unur_nrou_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            if u is not None:
+                self._check_errorcode(unur_nrou_set_u(self.par, u[0], u[1]))
+            if v is not None:
+                self._check_errorcode(unur_nrou_set_v(self.par, v))
+            self._check_errorcode(unur_nrou_set_r(self.par, r))
+            if center is not None:
+                self._check_errorcode(unur_nrou_set_center(self.par, center))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class NumericalInversePolynomial(Method):
+    def __cinit__(self,
+                  dist,
+                  center=None,
+                  params=(),
+                  domain=None,
+                  order=5,
+                  smoothness=0,
+                  u_resolution=1e-10,
+                  boundary=None,
+                  max_intervals=10000,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf"], optional_meths=["dpdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            if center is not None:
+                self._check_errorcode(unur_distr_cont_set_center(self.distr, center))
+
+            self.par = unur_pinv_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            self._check_errorcode(unur_pinv_set_order(self.par, order))
+            self._check_errorcode(unur_pinv_set_smoothness(self.par, smoothness))
+            self._check_errorcode(unur_pinv_set_u_resolution(self.par, u_resolution))
+            if boundary is not None:
+                self._check_errorcode(unur_pinv_set_boundary(self.par, boundary[0], boundary[1]))
+            self._check_errorcode(unur_pinv_set_max_intervals(self.par, max_intervals))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class SimpleRatioOfUniforms(Method):
+    def __cinit__(self,
+                  dist,
+                  mode,
+                  area,
+                  params=(),
+                  domain=None,
+                  r=1,
+                  pdfatmode=None,
+                  cdfatmode=None,
+                  usesqueeze=False,
+                  usemirror=False,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self._check_errorcode(unur_distr_cont_set_mode(self.distr, mode))
+            self._check_errorcode(unur_distr_cont_set_pdfarea(self.distr, area))
+
+            self.par = unur_srou_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            self._check_errorcode(unur_srou_set_r(self.par, r))
+            if pdfatmode is not None:
+                self._check_errorcode(unur_srou_set_pdfatmode(self.par, pdfatmode))
+            if cdfatmode is not None:
+                self._check_errorcode(unur_srou_set_cdfatmode(self.par, cdfatmode))
+            self._check_errorcode(unur_srou_set_usesqueeze(self.par, usesqueeze))
+            self._check_errorcode(unur_srou_set_usemirror(self.par, usemirror))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class SimpleSetupRejection(Method):
+    def __cinit__(self,
+                  dist,
+                  mode,
+                  area,
+                  params=(),
+                  domain=None,
+                  pdfatmode=None,
+                  cdfatmode=None,
+                  usesqueeze=False,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self._check_errorcode(unur_distr_cont_set_mode(self.distr, mode))
+            self._check_errorcode(unur_distr_cont_set_pdfarea(self.distr, area))
+
+            self.par = unur_ssr_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            if pdfatmode is not None:
+                self._check_errorcode(unur_ssr_set_pdfatmode(self.par, pdfatmode))
+            if cdfatmode is not None:
+                self._check_errorcode(unur_ssr_set_cdfatmode(self.par, cdfatmode))
+            self._check_errorcode(unur_ssr_set_usesqueeze(self.par, usesqueeze))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()
+
+
+cdef class PiecewiseConstantHatsTable(Method):
+    def __cinit__(self,
+                  dist,
+                  mode,
+                  area=None,
+                  params=(),
+                  domain=None,
+                  variant_ia=True,
+                  cpoints=30,
+                  nstp=30,
+                  useear=True,
+                  areafraction=0.1,
+                  usedars=True,
+                  variant_splitmode=2,
+                  max_sqhratio=0.9,
+                  max_intervals=1000,
+                #   slopes,
+                  guidefactor=1,
+                  boundary=None,
+                  seed=None):
+        cdef:
+            unur_distr *distr
+            unur_par *par
+            unur_gen *rng
+            ccallback_t callback
+            double[::1] cpoints_array
+
+        self.callbacks = _unpack_dist(dist, "cont", meths=["pdf"])
+        self.params = params
+        def _callback_wrapper(x, name, *args):
+            return self.callbacks[name](x, *args)
+        self._callback_wrapper = _callback_wrapper
+        init_unuran_callback(&callback, self._callback_wrapper, self.params)
+        self._messages = MessageStream()
+        _lock.acquire()
+        try:
+            unur_set_stream(self._messages.handle)
+
+            self.distr = unur_distr_cont_new()
+            if self.distr == NULL:
+                raise UNURANError(self._messages.get())
+            _pack_distr(self.distr, self.callbacks)
+
+            if domain is not None:
+                self._check_errorcode(unur_distr_cont_set_domain(self.distr, domain[0],
+                                                                 domain[1]))
+
+            self._check_errorcode(unur_distr_cont_set_mode(self.distr, mode))
+            if area is not None:
+                self._check_errorcode(unur_distr_cont_set_pdfarea(self.distr, area))
+
+            self.par = unur_tabl_new(self.distr)
+            if self.par == NULL:
+                raise UNURANError(self._messages.get())
+
+            self._check_errorcode(unur_tabl_set_variant_ia(self.par, variant_ia))
+            self._check_errorcode(unur_tabl_set_cpoints(self.par, cpoints, NULL))
+            self._check_errorcode(unur_tabl_set_nstp(self.par, nstp))
+            self._check_errorcode(unur_tabl_set_useear(self.par, useear))
+            self._check_errorcode(unur_tabl_set_areafraction(self.par, areafraction))
+            self._check_errorcode(unur_tabl_set_usedars(self.par, usedars))
+            self._check_errorcode(unur_tabl_set_variant_splitmode(self.par, variant_splitmode))
+            self._check_errorcode(unur_tabl_set_max_sqhratio(self.par, max_sqhratio))
+            self._check_errorcode(unur_tabl_set_max_intervals(self.par, max_intervals))
+            self._check_errorcode(unur_tabl_set_guidefactor(self.par, guidefactor))
+            if boundary is not None:
+                self._check_errorcode(unur_tabl_set_boundary(self.par, boundary[0], boundary[1]))
+
+            self._set_rng(seed)
+        finally:
+            release_unuran_callback(&callback)
+            _lock.release()

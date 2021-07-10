@@ -2,26 +2,29 @@ import numpy as np
 from .common import Benchmark, safe_import
 
 with safe_import():
-    from scipy import stats
+    from scipy import stats, integrate
 with safe_import():
     from scipy.stats._distr_params import distdiscrete
 
 
 # Beta distribution with a = 2, b = 3
-class contdist1:
+class beta23:
+    scipy_dist = stats.beta(2, 3)
+    def __init__(self):
+        self.mode = 1/3
+        self.pdfarea = integrate.quad(self.pdf, 0, 1)[0]
+        self.domain = (0, 1)
     def pdf(self, x):
-        if 0 < x < 1:
-            return x * (1-x)**2
-        return 0
+        return x * (1-x)**2
+    def logpdf(self, x):
+        if x == 0 or x == 1:
+            return -np.inf
+        return np.log(x) + 2*np.log(1-x)
     def dpdf(self, x):
-        if 0 < x < 1:
-            return (1-x)**2 - 2*x*(1-x)
-        return 0
+        return (1-x)**2 - 2*x*(1-x)
+    def dlogpdf(self, x):
+        return 1/x - 2/(1-x)
     def cdf(self, x):
-        if x < 0:
-            return 0
-        if x > 1:
-            return 1
         return stats.beta._cdf(x, 2, 3)
     def __repr__(self):
         # asv prints this.
@@ -29,41 +32,90 @@ class contdist1:
 
 
 # Standard Normal Distribution
-class contdist2:
+class stdnorm:
+    scipy_dist = stats.norm()
+    def __init__(self):
+        self.mode = 0
+        self.pdfarea = integrate.quad(self.pdf, -np.inf, np.inf)[0]
+        self.domain = (-np.inf, np.inf)
     def pdf(self, x):
-        return stats.norm._pdf(x)
+        return np.exp(-0.5 * x*x)
+    def logpdf(self, x):
+        return -0.5 * x*x
     def dpdf(self, x):
-        return -x * stats.norm._pdf(x)
+        return -x * np.exp(-0.5 * x*x)
+    def dlogpdf(self, x):
+        return -x
     def cdf(self, x):
         return stats.norm._cdf(x)
     def __repr__(self):
         return 'norm(0, 1)'
 
 
-# pdf with piecewise linear function as transformed density with T = -1/sqrt
-# Taken from UNU.RAN test suite (from file t_tdr_ps.c)
-class contdist3:
-    def __init__(self, shift=0.):
-        self.shift = shift
-    def pdf(self, x):
-        x -= self.shift
-        y = 1. / (abs(x) + 1.)
-        return y * y
-    def dpdf(self, x):
-        x -= self.shift
-        y = 1. / (abs(x) + 1.)
-        y = 2. * y * y * y
-        return y if (x < 0.) else -y
-    def cdf(self, x):
-        x -= self.shift
-        if x <= 0.:
-            return 0.5 / (1. - x)
-        return 1. - 0.5 / (1. + x)
-    def __repr__(self):
-        return f'sqrtlinshft({self.shift})'
+allcontdists = [beta23(), stdnorm()]
 
 
-allcontdists = [contdist1(), contdist2(), contdist3(), contdist3(10000.)]
+class AllContinuous(Benchmark):
+
+    param_names = ['method', 'dist', 'n_samples']
+
+    params = [
+        [('TransformedDensityRejection', ),
+         ('AutomaticRatioOfUniforms', ),
+         ('AdaptiveRejectionSampling', ),
+         ('NumericalInverseHermiteUNURAN', ),
+         ('NumericalInverse', ),
+         ('NaiveRatioOfUniforms', 'mode'),
+         ('NumericalInversePolynomial', ),
+         ('SimpleRatioOfUniforms', 'mode', 'area'),
+         ('SimpleSetupRejection', 'mode', 'area'),
+         ('PiecewiseConstantHatsTable', 'mode', 'area')],
+        allcontdists,
+        [10, 100, 1000, 10000, 100000]
+    ]
+
+    def setup(self, method, dist, n_samples):
+        Method = getattr(stats, method[0])
+        args = method[1:]
+        kwargs = {}
+        if 'mode' in args:
+            kwargs['mode'] = dist.mode
+        if 'area' in args:
+            kwargs['area'] = dist.pdfarea
+        with np.testing.suppress_warnings() as sup:
+            sup.filter(RuntimeWarning)
+            try:
+                self.rng = Method(dist, domain=dist.domain, seed=123, **kwargs)
+            except stats.UNURANError as e:
+                raise NotImplementedError(f'{method}, {dist}, {n_samples} : RNG creation failed with error -- {e.args[0]}')
+
+    def time_rvs(self, method, dist, n_samples):
+        self.rng.rvs(n_samples)
+
+
+class AllContinuousSciPy(Benchmark):
+
+    param_names = ['dist', 'n_samples']
+
+    params = [allcontdists, [10, 100, 1000, 10000, 100000]]
+
+    def time_scipy_rvs(self, dist, n_samples):
+        dist.scipy_dist.rvs(size=n_samples, random_state=123)
+
+class AllContinuousNumPy(Benchmark):
+
+    param_names = ['dist', 'n_samples']
+
+    params = [[('standard_normal', ), ('beta', 2, 3)],
+              [10, 100, 1000, 10000, 100000]]
+
+    def setup(self, dist, n_samples):
+        rng = np.random.default_rng(123)
+        self.rng = getattr(rng, dist[0])
+        self.args = dist[1:]
+
+    def time_numpy_rvs(self, dist, n_samples):
+        self.rng(*self.args, size=n_samples)
 
 
 class TransformedDensityRejection(Benchmark):
