@@ -12,8 +12,6 @@ cimport numpy as np
 IF not NPY_OLD:
     from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
     from numpy.random cimport bitgen_t
-ELSE:
-    import copy
 from scipy._lib.ccallback cimport ccallback_t
 from scipy._lib.messagestream cimport MessageStream
 from .unuran cimport *
@@ -51,6 +49,7 @@ cdef extern from "unuran_callback.h":
 
 
 class UNURANError(RuntimeError):
+    """Raised when an error occurs in the UNU.RAN library."""
     pass
 
 
@@ -324,10 +323,10 @@ cdef class Method:
     * `_check_errorcode` must be called after calling a UNU.RAN function
       that returns a error code. It raises an error if Python error variable
       has been set or if an error has occured in UNU.RAN.
-    * It implements the `rvs` public method for sampling. No inheriting class
+    * It implements the `rvs` public method for sampling. No child class
       should override this method.
     * Provides the `seed` property to get and set the NumPy URNG.
-    * Implements the __dealloc__ method. The inheriting class must not overide
+    * Implements the __dealloc__ method. The child class must not overide
       this method.
 
     """
@@ -419,9 +418,9 @@ cdef class Method:
             unur_set_stream(self._messages.handle)
 
             for i in range(size):
+                out[i] = unur_sample_cont(rng)
                 if PyErr_Occurred():
                     return
-                out[i] = unur_sample_cont(rng)
 
             msg = self._messages.get()
             if msg:
@@ -510,7 +509,8 @@ cdef class Method:
     @seed.setter
     def seed(self, new_seed):
         self.numpy_rng = get_numpy_rng(new_seed)
-        with _lock:
+        _lock.acquire()
+        try:
             self._messages.clear()
             unur_set_stream(self._messages.handle)
             unur_urng_free(self.urng)
@@ -519,6 +519,8 @@ cdef class Method:
             if self.urng == NULL:
                 raise UNURANError(self._messages.get())
             unur_chg_urng(self.rng, self.urng)
+        finally:
+            _lock.release()
 
     @cython.final
     def __dealloc__(self):
@@ -866,9 +868,6 @@ cdef class TransformedDensityRejection(Method):
         cond0 = 0 <= u
         cond1 = u <= 1
         cond2 = cond0 & cond1
-        # UNU.RAN fails to recognize NaNs and seg faults when nans are
-        # present. So, handle nan manually.
-        cond3 = np.isnan(u)
         goodu = argsreduce(cond2, u)[0]
         out = np.empty_like(u)
         cdef double[::1] u_view = np.ascontiguousarray(goodu)
@@ -876,7 +875,7 @@ cdef class TransformedDensityRejection(Method):
         if cond2.any():
             self._ppf_hat(&u_view[0], &goodout[0], len(goodu))
         np.place(out, cond2, goodout)
-        np.place(out, ~cond2 | cond3, np.nan)
+        np.place(out, ~cond2, np.nan)
         return np.asarray(out).reshape(oshape)[()]
 
 
