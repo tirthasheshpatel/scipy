@@ -409,8 +409,8 @@ if __name__ == "__main__":
                     xlabel="n (number of samples)",
                     equality_check=None,
                     max_time=5,
-                    logx=False,
-                    logy=False,
+                    logx=True,
+                    logy=True,
                     show_progress=False
                 )
                 print(f"Completed generating plots for {dist}")
