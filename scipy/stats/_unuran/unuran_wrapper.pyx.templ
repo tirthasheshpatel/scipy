@@ -121,9 +121,6 @@ cdef class _URNG:
 
     IF NPY_OLD:
         cdef double _next_double(self) nogil:
-            # return immediately if an error has occured.
-            if PyErr_Occurred():
-                return 0
             with gil:
                 return self.numpy_rng.uniform()
 
@@ -422,11 +419,11 @@ cdef class Method:
             unur_set_stream(self._messages.handle)
 
             for i in range(size):
+                if PyErr_Occurred():
+                    return
                 out[i] = unur_sample_cont(rng)
 
             msg = self._messages.get()
-            if PyErr_Occurred():
-                return
             if msg:
                 raise UNURANError(msg)
         finally:
@@ -461,10 +458,10 @@ cdef class Method:
 
             for i in range(size):
                 out[i] = unur_sample_discr(rng)
+                if PyErr_Occurred():
+                    return
 
             msg = self._messages.get()
-            if PyErr_Occurred():
-                return
             if msg:
                 raise UNURANError(msg)
         finally:
