@@ -125,9 +125,19 @@ double pdf_thunk(double x, const struct unur_distr *distr)
     UNURAN_THUNK(PyFloat_FromDouble, "pdf", 3);
 }
 
+double logpdf_thunk(double x, const struct unur_distr *distr)
+{
+    UNURAN_THUNK(PyFloat_FromDouble, "logpdf", 6);
+}
+
 double dpdf_thunk(double x, const struct unur_distr *distr)
 {
     UNURAN_THUNK(PyFloat_FromDouble, "dpdf", 4);
+}
+
+double dlogpdf_thunk(double x, const struct unur_distr *distr)
+{
+    UNURAN_THUNK(PyFloat_FromDouble, "dlogpdf", 7);
 }
 
 double cont_cdf_thunk(double x, const struct unur_distr *distr)
