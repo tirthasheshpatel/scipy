@@ -11,7 +11,7 @@ on:
 jobs:
   test_windows:
     name: Python 3.9
-    runs-on: windows-2019
+    runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v2
@@ -71,5 +71,5 @@ jobs:
             pip install $_.FullName
         }
 
-        python runtests.py --submodule stats
+        python runtests.py -n --submodule stats --mode=full -- -n 2
       shell: pwsh
