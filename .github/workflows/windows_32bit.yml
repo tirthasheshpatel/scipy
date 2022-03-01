@@ -10,7 +10,7 @@ on:
 
 jobs:
   test_windows:
-    name: Python 3.9
+    name: Python 3.8
     runs-on: windows-latest
 
     steps:
@@ -20,7 +20,7 @@ jobs:
 
     - uses: actions/setup-python@v2
       with:
-        python-version: '3.9' # Version range or exact version of a Python version to use, using SemVer's version range syntax
+        python-version: '3.8' # Version range or exact version of a Python version to use, using SemVer's version range syntax
         architecture: 'x86'
 
     - name: Python Version Check
@@ -28,54 +28,48 @@ jobs:
         python --version
         Write-Host $env:Path
 
-    # - name: Install mingw
-    #   run: |
-    #     choco install -y mingw --forcex86 --force --version=7.3.0
-    #   shell: pwsh
-
-    - name: Try GDB
+    - name: Install mingw
       run: |
-        gcc segfault.c -ggdb -o ./segfault
-        gdb ./segfault.exe -x cmds.txt
+        choco install -y mingw --forcex86 --force --version=7.3.0
       shell: pwsh
 
-    # - name: Install OpenBLAS
-    #   run: |
-    #     python -m venv scipy-dev
-    #     scipy-dev\Scripts\activate
-    #     python -m pip install --upgrade pip "setuptools==59.6.0" wheel
-    #     $env:NPY_USE_BLAS_ILP64 = 0
-    #     $openblas = python tools/openblas_support.py
-    #     cp $openblas scipy-dev\Lib\openblas.a
-    #     echo "Installed OpenBLAS."
-    #   shell: pwsh
+    - name: Install OpenBLAS
+      run: |
+        python -m venv scipy-dev
+        scipy-dev\Scripts\activate
+        python -m pip install --upgrade pip "setuptools==59.6.0" wheel
+        $env:NPY_USE_BLAS_ILP64 = 0
+        $openblas = python tools/openblas_support.py
+        cp $openblas scipy-dev\Lib\openblas.a
+        echo "Installed OpenBLAS."
+      shell: pwsh
 
-    # - name: Build SciPy and Run Tests
-    #   run: |
-    #     scipy-dev\Scripts\activate
-    #     python -m pip install cython==0.29.24 numpy==1.21.4 pybind11 pythran==0.10.0 pytest pytest-cov pytest-xdist==1.34.0 threadpoolctl
+    - name: Build SciPy and Run Tests
+      run: |
+        scipy-dev\Scripts\activate
+        python -m pip install cython==0.29.24 numpy==1.21.4 pybind11 pythran==0.10.0 pytest pytest-cov pytest-xdist==1.34.0 threadpoolctl
 
-    #     $env:PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw32\bin;" + $env:PATH
-    #     $env:NPY_USE_BLAS_ILP64 = 0
-    #     $env:NPY_DISTUTILS_APPEND_FLAGS = 1
-    #     $env:CFLAGS = "-m32"
-    #     $env:CXXFLAGS = "-m32"
-    #     $env:LDFLAGS = "-m32"
-    #     $env:SCIPY_USE_PYTHRAN=0
-    #     refreshenv
+        $env:PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw32\bin;" + $env:PATH
+        $env:NPY_USE_BLAS_ILP64 = 0
+        $env:NPY_DISTUTILS_APPEND_FLAGS = 1
+        $env:CFLAGS = "-m32"
+        $env:CXXFLAGS = "-m32"
+        $env:LDFLAGS = "-m32"
+        $env:SCIPY_USE_PYTHRAN=0
+        refreshenv
 
-    #     git clone -n --depth 1 https://github.com/MacPython/scipy-wheels.git
-    #     cd scipy-wheels
-    #     git checkout HEAD _distributor_init.py
-    #     cd ..
-    #     rm scipy/_distributor_init.py
-    #     mv scipy-wheels/_distributor_init.py scipy/
+        git clone -n --depth 1 https://github.com/MacPython/scipy-wheels.git
+        cd scipy-wheels
+        git checkout HEAD _distributor_init.py
+        cd ..
+        rm scipy/_distributor_init.py
+        mv scipy-wheels/_distributor_init.py scipy/
 
-    #     mkdir dist
-    #     pip wheel --no-build-isolation -v -v -v --wheel-dir=dist .
-    #     ls dist -r | Foreach-Object {
-    #         pip install $_.FullName
-    #     }
+        mkdir dist
+        pip wheel --no-build-isolation -v -v -v --wheel-dir=dist .
+        ls dist -r | Foreach-Object {
+            pip install $_.FullName
+        }
 
-    #     python runtests.py -n --submodule stats --mode=full -- -n 2
-    #   shell: pwsh
+        python runtests.py -n --submodule stats --mode=full -- -n 2
+      shell: pwsh
