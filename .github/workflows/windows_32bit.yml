@@ -44,6 +44,13 @@ jobs:
         echo "Installed OpenBLAS."
       shell: pwsh
 
+    - name: Try out GDB
+      run: |
+        scipy-dev\Scripts\activate
+        python -m pip install numpy
+        gdb $(where python) -x gdbcmds.txt
+      shell: pwsh
+
     - name: Build SciPy and Run Tests
       run: |
         scipy-dev\Scripts\activate
@@ -52,9 +59,9 @@ jobs:
         $env:PATH="C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw32\bin;" + $env:PATH
         $env:NPY_USE_BLAS_ILP64 = 0
         $env:NPY_DISTUTILS_APPEND_FLAGS = 1
-        $env:CFLAGS = "-m32"
-        $env:CXXFLAGS = "-m32"
-        $env:LDFLAGS = "-m32"
+        $env:CFLAGS = "-O0 -ggdb -m32"
+        $env:CXXFLAGS = "-O0 -ggdb -m32"
+        $env:LDFLAGS = "-O0 -ggdb -m32"
         $env:SCIPY_USE_PYTHRAN=0
         refreshenv
 
@@ -71,5 +78,11 @@ jobs:
             pip install $_.FullName
         }
 
-        python runtests.py -n --submodule stats --mode=full -- -n 2
+        mkdir test
+        cp test_pinv_qrvs.py test/
+        cp gdbcmds.txt test/
+        cd test/
+        gdb -x gdbcmds.txt --args python test_pinv_qrvs.py
+
+        # python runtests.py -n --submodule stats --mode=full -- -n 2
       shell: pwsh

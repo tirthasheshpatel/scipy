@@ -1,0 +1,4 @@
+run test_pinv_qrvs.py
+bt full
+c
+q
