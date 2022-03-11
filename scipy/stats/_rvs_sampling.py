@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from ._unuran import unuran_wrapper
+from ._unuran import _unuran_wrapper
 from scipy._lib.deprecation import _deprecated
 from scipy._lib._util import check_random_state
 
@@ -181,7 +181,7 @@ class NumericalInverseHermite:
         "i.e. `from scipy.stats.sampling import NumericalInverseHermite`"
     )
     def __init__(self, *args, **kwargs):
-        self.hinv = unuran_wrapper.NumericalInverseHermite(*args, **kwargs)
+        self.hinv = _unuran_wrapper.NumericalInverseHermite(*args, **kwargs)
         self.intervals = self.hinv.intervals
         self.midpoint_error = self.hinv.midpoint_error
 

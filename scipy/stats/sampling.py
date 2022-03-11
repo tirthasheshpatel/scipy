@@ -40,12 +40,4 @@ Warnings / Errors used in :mod:`scipy.stats.sampling`
 
    UNURANError
 """
-from ._unuran.unuran_wrapper import (  # noqa: F401
-    TransformedDensityRejection,
-    DiscreteAliasUrn,
-    DiscreteGuideTable,
-    NumericalInversePolynomial,
-    NumericalInverseHermite,
-    SimpleRatioUniforms,
-    UNURANError
-)
+from ._unuran import *  # noqa

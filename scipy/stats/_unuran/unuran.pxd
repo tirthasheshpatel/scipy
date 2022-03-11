@@ -1,4 +1,4 @@
-# File automatically generated using autopxd2
+# File automatically generated using autopxd2 with minor manual changes
 
 from libc.stdio cimport FILE
 

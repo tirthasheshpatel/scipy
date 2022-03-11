@@ -125,8 +125,8 @@ def configuration(parent_package="", top_path=None):
     sources = _get_sources(UNURAN_SOURCE_DIRS[1:])
 
     ext = config.add_extension(
-        "unuran_wrapper",
-        sources=["unuran_wrapper.c"] + sources,
+        "_unuran_wrapper",
+        sources=["_unuran_wrapper.c"] + sources,
         libraries=[],
         include_dirs=[str(dir_.resolve()) for dir_ in UNURAN_SOURCE_DIRS]
         + [

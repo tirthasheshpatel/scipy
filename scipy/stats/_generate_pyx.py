@@ -26,17 +26,6 @@ def make_biasedurn(outdir):
         dest.write(contents.format(NPY_OLD=str(bool(isNPY_OLD()))))
 
 
-def make_unuran(srcdir, outdir):
-    """Substitute True/False values for NPY_OLD Cython build variable."""
-    import re
-    with open(srcdir / "unuran_wrapper.pyx.templ", "r") as src:
-        contents = src.read()
-    with open(outdir / "unuran_wrapper.pyx", "w") as dest:
-        dest.write(re.sub("DEF NPY_OLD = isNPY_OLD",
-                          f"DEF NPY_OLD = {isNPY_OLD()}",
-                          contents))
-
-
 def make_boost(outdir, distutils_build=False):
     # Call code generator inside _boost directory
     code_gen = pathlib.Path(__file__).parent / '_boost/include/code_gen.py'
@@ -65,11 +54,9 @@ if __name__ == '__main__':
         make_boost(outdir_abs_boost, distutils_build=True)
 
         outdir_abs_unuran = outdir_abs / '_unuran'
-        make_unuran(outdir_abs_unuran, outdir_abs_unuran)
     else:
         # Meson build
         srcdir_abs = pathlib.Path(os.path.abspath(os.path.dirname(__file__)))
         outdir_abs = pathlib.Path(os.getcwd()) / args.outdir
         make_biasedurn(outdir_abs)
         make_boost(outdir_abs)
-        make_unuran(srcdir_abs / '_unuran', outdir_abs)

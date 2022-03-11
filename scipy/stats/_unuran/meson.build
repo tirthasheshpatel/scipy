@@ -203,9 +203,9 @@ unuran_defines = [
   '-D_ISOC99_SOURCE=1'
 ]
 
-statlib = py3.extension_module('unuran_wrapper',
+statlib = py3.extension_module('_unuran_wrapper',
   [
-    unuran_wrap_pyx,
+    cython_gen.process('_unuran_wrapper.pyx'),
     unuran_sources
   ],
   c_args: [unuran_defines, cython_c_args],
@@ -219,7 +219,7 @@ statlib = py3.extension_module('unuran_wrapper',
 py3.install_sources([
     '__init__.py',
     'unuran.pxd',
-    'unuran_wrapper.pyi',
+    '_unuran_wrapper.pyi',
   ],
   pure: false,
   subdir: 'scipy/stats/_unuran'
