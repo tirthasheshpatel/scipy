@@ -43,106 +43,8 @@ from ._constants import _XMAX
 # These are the docstring parts used for substitution in specific
 # distribution docstrings
 
-docheaders = {'methods': """\nMethods\n-------\n""",
-              'notes': """\nNotes\n-----\n""",
+docheaders = {'notes': """\nNotes\n-----\n""",
               'examples': """\nExamples\n--------\n"""}
-
-_doc_rvs = """\
-rvs(%(shapes)s, loc=0, scale=1, size=1, random_state=None)
-    Random variates.
-"""
-_doc_pdf = """\
-pdf(x, %(shapes)s, loc=0, scale=1)
-    Probability density function.
-"""
-_doc_logpdf = """\
-logpdf(x, %(shapes)s, loc=0, scale=1)
-    Log of the probability density function.
-"""
-_doc_pmf = """\
-pmf(k, %(shapes)s, loc=0, scale=1)
-    Probability mass function.
-"""
-_doc_logpmf = """\
-logpmf(k, %(shapes)s, loc=0, scale=1)
-    Log of the probability mass function.
-"""
-_doc_cdf = """\
-cdf(x, %(shapes)s, loc=0, scale=1)
-    Cumulative distribution function.
-"""
-_doc_logcdf = """\
-logcdf(x, %(shapes)s, loc=0, scale=1)
-    Log of the cumulative distribution function.
-"""
-_doc_sf = """\
-sf(x, %(shapes)s, loc=0, scale=1)
-    Survival function  (also defined as ``1 - cdf``, but `sf` is sometimes more accurate).
-"""
-_doc_logsf = """\
-logsf(x, %(shapes)s, loc=0, scale=1)
-    Log of the survival function.
-"""
-_doc_ppf = """\
-ppf(q, %(shapes)s, loc=0, scale=1)
-    Percent point function (inverse of ``cdf`` --- percentiles).
-"""
-_doc_isf = """\
-isf(q, %(shapes)s, loc=0, scale=1)
-    Inverse survival function (inverse of ``sf``).
-"""
-_doc_moment = """\
-moment(order, %(shapes)s, loc=0, scale=1)
-    Non-central moment of the specified order.
-"""
-_doc_stats = """\
-stats(%(shapes)s, loc=0, scale=1, moments='mv')
-    Mean('m'), variance('v'), skew('s'), and/or kurtosis('k').
-"""
-_doc_entropy = """\
-entropy(%(shapes)s, loc=0, scale=1)
-    (Differential) entropy of the RV.
-"""
-_doc_fit = """\
-fit(data)
-    Parameter estimates for generic data.
-    See `scipy.stats.rv_continuous.fit <https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.rv_continuous.fit.html#scipy.stats.rv_continuous.fit>`__ for detailed documentation of the
-    keyword arguments.
-"""
-_doc_expect = """\
-expect(func, args=(%(shapes_)s), loc=0, scale=1, lb=None, ub=None, conditional=False, **kwds)
-    Expected value of a function (of one argument) with respect to the distribution.
-"""
-_doc_expect_discrete = """\
-expect(func, args=(%(shapes_)s), loc=0, lb=None, ub=None, conditional=False)
-    Expected value of a function (of one argument) with respect to the distribution.
-"""
-_doc_median = """\
-median(%(shapes)s, loc=0, scale=1)
-    Median of the distribution.
-"""
-_doc_mean = """\
-mean(%(shapes)s, loc=0, scale=1)
-    Mean of the distribution.
-"""
-_doc_var = """\
-var(%(shapes)s, loc=0, scale=1)
-    Variance of the distribution.
-"""
-_doc_std = """\
-std(%(shapes)s, loc=0, scale=1)
-    Standard deviation of the distribution.
-"""
-_doc_interval = """\
-interval(confidence, %(shapes)s, loc=0, scale=1)
-    Confidence interval with equal areas around the median.
-"""
-_doc_allmethods = ''.join([docheaders['methods'], _doc_rvs, _doc_pdf,
-                           _doc_logpdf, _doc_cdf, _doc_logcdf, _doc_sf,
-                           _doc_logsf, _doc_ppf, _doc_isf, _doc_moment,
-                           _doc_stats, _doc_entropy, _doc_fit,
-                           _doc_expect, _doc_median,
-                           _doc_mean, _doc_var, _doc_std, _doc_interval])
 
 _doc_default_longsummary = """\
 As an instance of the `rv_continuous` class, `%(name)s` object inherits from it
@@ -215,34 +117,12 @@ some distributions are available in separate classes.
 """
 
 _doc_default = ''.join([_doc_default_longsummary,
-                        _doc_allmethods,
                         '\n',
                         _doc_default_example])
 
-_doc_default_before_notes = ''.join([_doc_default_longsummary,
-                                     _doc_allmethods])
+_doc_default_before_notes = ''.join([_doc_default_longsummary])
 
 docdict = {
-    'rvs': _doc_rvs,
-    'pdf': _doc_pdf,
-    'logpdf': _doc_logpdf,
-    'cdf': _doc_cdf,
-    'logcdf': _doc_logcdf,
-    'sf': _doc_sf,
-    'logsf': _doc_logsf,
-    'ppf': _doc_ppf,
-    'isf': _doc_isf,
-    'stats': _doc_stats,
-    'entropy': _doc_entropy,
-    'fit': _doc_fit,
-    'moment': _doc_moment,
-    'expect': _doc_expect,
-    'interval': _doc_interval,
-    'mean': _doc_mean,
-    'std': _doc_std,
-    'var': _doc_var,
-    'median': _doc_median,
-    'allmethods': _doc_allmethods,
     'longsummary': _doc_default_longsummary,
     'frozennote': _doc_default_frozen_note,
     'example': _doc_default_example,
@@ -254,25 +134,6 @@ docdict = {
 # Reuse common content between continuous and discrete docs, change some
 # minor bits.
 docdict_discrete = docdict.copy()
-
-docdict_discrete['pmf'] = _doc_pmf
-docdict_discrete['logpmf'] = _doc_logpmf
-docdict_discrete['expect'] = _doc_expect_discrete
-_doc_disc_methods = ['rvs', 'pmf', 'logpmf', 'cdf', 'logcdf', 'sf', 'logsf',
-                     'ppf', 'isf', 'stats', 'entropy', 'expect', 'median',
-                     'mean', 'var', 'std', 'interval']
-for obj in _doc_disc_methods:
-    docdict_discrete[obj] = docdict_discrete[obj].replace(', scale=1', '')
-
-_doc_disc_methods_err_varname = ['cdf', 'logcdf', 'sf', 'logsf']
-for obj in _doc_disc_methods_err_varname:
-    docdict_discrete[obj] = docdict_discrete[obj].replace('(x, ', '(k, ')
-
-docdict_discrete.pop('pdf')
-docdict_discrete.pop('logpdf')
-
-_doc_allmethods = ''.join([docdict_discrete[obj] for obj in _doc_disc_methods])
-docdict_discrete['allmethods'] = docheaders['methods'] + _doc_allmethods
 
 docdict_discrete['longsummary'] = _doc_default_longsummary.replace(
     'rv_continuous', 'rv_discrete')
@@ -340,12 +201,10 @@ equivalent to ``%(name)s.pmf(k - loc, %(shapes)s)``.
 docdict_discrete['example'] = _doc_default_discrete_example
 docdict_discrete['after_notes'] = _doc_default_discrete_locscale
 
-_doc_default_before_notes = ''.join([docdict_discrete['longsummary'],
-                                     docdict_discrete['allmethods']])
+_doc_default_before_notes = ''.join([docdict_discrete['longsummary']])
 docdict_discrete['before_notes'] = _doc_default_before_notes
 
 _doc_default_disc = ''.join([docdict_discrete['longsummary'],
-                             docdict_discrete['allmethods'],
                              docdict_discrete['frozennote'],
                              docdict_discrete['example']])
 docdict_discrete['default'] = _doc_default_disc
