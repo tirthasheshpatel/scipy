@@ -7,6 +7,7 @@
     Additional tests by a host of SciPy developers.
 """
 import os
+import re
 import warnings
 from collections import namedtuple
 from itertools import product
@@ -33,7 +34,6 @@ from scipy.sparse._sputils import matrix
 from scipy.spatial.distance import cdist
 from numpy.lib import NumpyVersion
 from scipy.stats._axis_nan_policy import _broadcast_concatenate
-from scipy.stats._hypotests import _batch_generator
 from scipy.stats._stats_py import (_permutation_distribution_t,
                             AlexanderGovernConstantInputWarning)
 
@@ -535,6 +535,35 @@ class TestFisherExact:
             res = stats.fisher_exact(np.asarray(table))
             np.testing.assert_almost_equal(res[1], res_r[1], decimal=11,
                                            verbose=True)
+
+    def test_gh4130(self):
+        # Previously, a fudge factor used to distinguish between theoeretically
+        # and numerically different probability masses was 1e-4; it has been
+        # tightened to fix gh4130. Accuracy checked against R fisher.test.
+        # options(digits=16)
+        # table <- matrix(c(6, 108, 37, 200), nrow = 2)
+        # fisher.test(table, alternative = "t")
+        x = [[6, 37], [108, 200]]
+        res = stats.fisher_exact(x)
+        assert_allclose(res[1], 0.005092697748126)
+
+        # case from https://github.com/brentp/fishers_exact_test/issues/27
+        # That package has an (absolute?) fudge factor of 1e-6; too big
+        x = [[22, 0], [0, 102]]
+        res = stats.fisher_exact(x)
+        assert_allclose(res[1], 7.175066786244549e-25)
+
+        # case from https://github.com/brentp/fishers_exact_test/issues/1
+        x = [[94, 48], [3577, 16988]]
+        res = stats.fisher_exact(x)
+        assert_allclose(res[1], 2.069356340993818e-37)
+
+    def test_gh9231(self):
+        # Previously, fisher_exact was extremely slow for this table
+        # As reported in gh-9231, the p-value should be very nearly zero
+        x = [[5829225, 5692693], [5760959, 5760959]]
+        res = stats.fisher_exact(x)
+        assert_allclose(res[1], 0, atol=1e-170)
 
     @pytest.mark.slow
     def test_large_numbers(self):
@@ -2107,49 +2136,6 @@ class TestScoreatpercentile:
         assert_equal(stats.scoreatpercentile([], [50, 99]), [np.nan, np.nan])
 
 
-class TestItemfreq:
-    a = [5, 7, 1, 2, 1, 5, 7] * 10
-    b = [1, 2, 5, 7]
-
-    def test_numeric_types(self):
-        # Check itemfreq works for all dtypes (adapted from np.unique tests)
-        def _check_itemfreq(dt):
-            a = np.array(self.a, dt)
-            with suppress_warnings() as sup:
-                sup.filter(DeprecationWarning)
-                v = stats.itemfreq(a)
-            assert_array_equal(v[:, 0], [1, 2, 5, 7])
-            assert_array_equal(v[:, 1], np.array([20, 10, 20, 20], dtype=dt))
-
-        dtypes = [np.int32, np.int64, np.float32, np.float64,
-                  np.complex64, np.complex128]
-        for dt in dtypes:
-            _check_itemfreq(dt)
-
-    def test_object_arrays(self):
-        a, b = self.a, self.b
-        dt = 'O'
-        aa = np.empty(len(a), dt)
-        aa[:] = a
-        bb = np.empty(len(b), dt)
-        bb[:] = b
-        with suppress_warnings() as sup:
-            sup.filter(DeprecationWarning)
-            v = stats.itemfreq(aa)
-        assert_array_equal(v[:, 0], bb)
-
-    def test_structured_arrays(self):
-        a, b = self.a, self.b
-        dt = [('', 'i'), ('', 'i')]
-        aa = np.array(list(zip(a, a)), dt)
-        bb = np.array(list(zip(b, b)), dt)
-        with suppress_warnings() as sup:
-            sup.filter(DeprecationWarning)
-            v = stats.itemfreq(aa)
-        # Arrays don't compare equal because v[:,0] is object array
-        assert_equal(tuple(v[2, 0]), tuple(bb[2]))
-
-
 class TestMode:
 
     deprecation_msg = r"Support for non-numeric arrays has been deprecated"
@@ -2978,10 +2964,17 @@ class TestMoments:
         mm = stats.moment(a, 2, axis=1, nan_policy="propagate")
         np.testing.assert_allclose(mm, [1.25, np.nan], atol=1e-15)
 
+    def test_moment_empty_moment(self):
+        # tests moment with empty `moment` list
+        with pytest.raises(ValueError, match=r"'moment' must be a scalar or a"
+                                             r" non-empty 1D list/array."):
+            stats.moment([1, 2, 3, 4], moment=[])
+
     def test_skewness(self):
         # Scalar test case
-        y = stats.skew(self.scalar_testcase)
-        assert_approx_equal(y, 0.0)
+        with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+            y = stats.skew(self.scalar_testcase)
+            assert np.isnan(y)
         # sum((testmathworks-mean(testmathworks,axis=0))**3,axis=0) /
         #     ((sqrt(var(testmathworks)*4/5))**3)/5
         y = stats.skew(self.testmathworks)
@@ -3015,20 +3008,22 @@ class TestMoments:
     def test_skew_constant_value(self):
         # Skewness of a constant input should be zero even when the mean is not
         # exact (gh-13245)
-        a = np.repeat(-0.27829495, 10)
-        assert stats.skew(a) == 0.0
-        assert stats.skew(a * float(2**50)) == 0.0
-        assert stats.skew(a / float(2**50)) == 0.0
-        assert stats.skew(a, bias=False) == 0.0
+        with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+            a = np.repeat(-0.27829495, 10)
+            assert np.isnan(stats.skew(a))
+            assert np.isnan(stats.skew(a * float(2**50)))
+            assert np.isnan(stats.skew(a / float(2**50)))
+            assert np.isnan(stats.skew(a, bias=False))
 
-        # similarly, from gh-11086:
-        assert stats.skew([14.3]*7) == 0.0
-        assert stats.skew(1 + np.arange(-3, 4)*1e-16) == 0
+            # similarly, from gh-11086:
+            assert np.isnan(stats.skew([14.3]*7))
+            assert np.isnan(stats.skew(1 + np.arange(-3, 4)*1e-16))
 
     def test_kurtosis(self):
         # Scalar test case
-        y = stats.kurtosis(self.scalar_testcase)
-        assert_approx_equal(y, -3.0)
+        with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+            y = stats.kurtosis(self.scalar_testcase)
+            assert np.isnan(y)
         #   sum((testcase-mean(testcase,axis=0))**4,axis=0)/((sqrt(var(testcase)*3/4))**4)/4
         #   sum((test2-mean(testmathworks,axis=0))**4,axis=0)/((sqrt(var(testmathworks)*4/5))**4)/5
         #   Set flags for axis = 0 and
@@ -3067,10 +3062,11 @@ class TestMoments:
         # Kurtosis of a constant input should be zero, even when the mean is not
         # exact (gh-13245)
         a = np.repeat(-0.27829495, 10)
-        assert stats.kurtosis(a, fisher=False) == 0.0
-        assert stats.kurtosis(a * float(2**50), fisher=False) == 0.0
-        assert stats.kurtosis(a / float(2**50), fisher=False) == 0.0
-        assert stats.kurtosis(a, fisher=False, bias=False) == 0.0
+        with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+            assert np.isnan(stats.kurtosis(a, fisher=False))
+            assert np.isnan(stats.kurtosis(a * float(2**50), fisher=False))
+            assert np.isnan(stats.kurtosis(a / float(2**50), fisher=False))
+            assert np.isnan(stats.kurtosis(a, fisher=False, bias=False))
 
     def test_moment_accuracy(self):
         # 'moment' must have a small enough error compared to the slower
@@ -3079,6 +3075,16 @@ class TestMoments:
                      np.mean(self.testcase_moment_accuracy)
         assert_allclose(np.power(tc_no_mean, 42).mean(),
                             stats.moment(self.testcase_moment_accuracy, 42))
+
+    def test_precision_loss_gh15554(self):
+        # gh-15554 was one of several issues that have reported problems with
+        # constant or near-constant input. We can't always fix these, but
+        # make sure there's a warning.
+        with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+            rng = np.random.default_rng(34095309370)
+            a = rng.random(size=(100, 10))
+            a[:, 0] = 1.01
+            stats.skew(a)[0]
 
 
 class TestStudentTest:
@@ -3096,7 +3102,8 @@ class TestStudentTest:
     P1_1_g = 1 - (P1_1 / 2)
 
     def test_onesample(self):
-        with suppress_warnings() as sup, np.errstate(invalid="ignore"):
+        with suppress_warnings() as sup, np.errstate(invalid="ignore"), \
+                pytest.warns(RuntimeWarning, match="Precision loss occurred"):
             sup.filter(RuntimeWarning, "Degrees of freedom <= 0 for slice")
             t, p = stats.ttest_1samp(4., 3.)
         assert_(np.isnan(t))
@@ -3857,7 +3864,8 @@ class TestKSTwoSamples:
         self._testOne(x, y, 'greater', 2000.0 / n1 / n2, 0.9697596024683929, mode='asymp')
         self._testOne(x, y, 'less', 500.0 / n1 / n2, 0.9968735843165021, mode='asymp')
         with suppress_warnings() as sup:
-            sup.filter(RuntimeWarning, "ks_2samp: Exact calculation unsuccessful. Switching to mode=asymp.")
+            message = "ks_2samp: Exact calculation unsuccessful."
+            sup.filter(RuntimeWarning, message)
             self._testOne(x, y, 'greater', 2000.0 / n1 / n2, 0.9697596024683929, mode='exact')
             self._testOne(x, y, 'less', 500.0 / n1 / n2, 0.9968735843165021, mode='exact')
         with warnings.catch_warnings(record=True) as w:
@@ -3878,7 +3886,8 @@ class TestKSTwoSamples:
         self._testOne(x, y, 'less', 1000.0 / n1 / n2, 0.9982410869433984, mode='asymp')
 
         with suppress_warnings() as sup:
-            sup.filter(RuntimeWarning, "ks_2samp: Exact calculation unsuccessful. Switching to mode=asymp.")
+            message = "ks_2samp: Exact calculation unsuccessful."
+            sup.filter(RuntimeWarning, message)
             self._testOne(x, y, 'greater', 6600.0 / n1 / n2, 0.9573185808092622, mode='exact')
             self._testOne(x, y, 'less', 1000.0 / n1 / n2, 0.9982410869433984, mode='exact')
         with warnings.catch_warnings(record=True) as w:
@@ -3942,7 +3951,8 @@ class TestKSTwoSamples:
         self._testOne(x, y, 'greater', 563.0 / lcm, 0.7561851877420673)
         self._testOne(x, y, 'less', 10.0 / lcm, 0.9998239693191724)
         with suppress_warnings() as sup:
-            sup.filter(RuntimeWarning, "ks_2samp: Exact calculation unsuccessful. Switching to mode=asymp.")
+            message = "ks_2samp: Exact calculation unsuccessful."
+            sup.filter(RuntimeWarning, message)
             self._testOne(x, y, 'greater', 563.0 / lcm, 0.7561851877420673, mode='exact')
             self._testOne(x, y, 'less', 10.0 / lcm, 0.9998239693191724, mode='exact')
 
@@ -4004,7 +4014,8 @@ def test_ttest_rel():
     assert_array_almost_equal([t,p],tpr)
 
     # test scalars
-    with suppress_warnings() as sup, np.errstate(invalid="ignore"):
+    with suppress_warnings() as sup, np.errstate(invalid="ignore"), \
+            pytest.warns(RuntimeWarning, match="Precision loss occurred"):
         sup.filter(RuntimeWarning, "Degrees of freedom <= 0 for slice")
         t, p = stats.ttest_rel(4., 3.)
     assert_(np.isnan(t))
@@ -4058,7 +4069,8 @@ def test_ttest_rel():
     assert_raises(ValueError, stats.ttest_rel, x, y, nan_policy='foobar')
 
     # test zero division problem
-    t, p = stats.ttest_rel([0, 0, 0], [1, 1, 1])
+    with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+        t, p = stats.ttest_rel([0, 0, 0], [1, 1, 1])
     assert_equal((np.abs(t), p), (np.inf, 0))
     with np.errstate(invalid="ignore"):
         assert_equal(stats.ttest_rel([0, 0, 0], [0, 0, 0]), (np.nan, np.nan))
@@ -4192,7 +4204,8 @@ def test_ttest_ind():
                               [t, p])
 
     # test scalars
-    with suppress_warnings() as sup, np.errstate(invalid="ignore"):
+    with suppress_warnings() as sup, np.errstate(invalid="ignore"), \
+            pytest.warns(RuntimeWarning, match="Precision loss occurred"):
         sup.filter(RuntimeWarning, "Degrees of freedom <= 0 for slice")
         t, p = stats.ttest_ind(4., 3.)
     assert_(np.isnan(t))
@@ -4253,7 +4266,8 @@ def test_ttest_ind():
     assert_raises(ValueError, stats.ttest_ind, x, y, nan_policy='foobar')
 
     # test zero division problem
-    t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1])
+    with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+        t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1])
     assert_equal((np.abs(t), p), (np.inf, 0))
 
     with np.errstate(invalid="ignore"):
@@ -4524,21 +4538,6 @@ class Test_ttest_ind_permutations():
             stats.ttest_ind(self.a, self.b, permutations=1,
                             random_state='hello')
 
-    @pytest.mark.parametrize("batch", (-1, 0))
-    def test_batch_generator_iv(self, batch):
-        with assert_raises(ValueError, match="`batch` must be positive."):
-            list(_batch_generator([1, 2, 3], batch))
-
-    batch_generator_cases = [(range(0), 3, []),
-                             (range(6), 3, [[0, 1, 2], [3, 4, 5]]),
-                             (range(8), 3, [[0, 1, 2], [3, 4, 5], [6, 7]])]
-
-    @pytest.mark.parametrize("iterable, batch, expected",
-                             batch_generator_cases)
-    def test_batch_generator(self, iterable, batch, expected):
-        got = list(_batch_generator(iterable, batch))
-        assert got == expected
-
 
 class Test_ttest_ind_common:
     # for tests that are performed on variations of the t-test such as
@@ -4605,6 +4604,7 @@ class Test_ttest_ind_common:
         with suppress_warnings() as sup, np.errstate(invalid="ignore"):
             sup.filter(RuntimeWarning,
                        "invalid value encountered in less_equal")
+            sup.filter(RuntimeWarning, "Precision loss occurred")
             res = stats.ttest_ind(a, b, axis=axis, **kwds)
         p_nans = np.isnan(res.pvalue)
         assert_array_equal(p_nans, expected)
@@ -4860,7 +4860,8 @@ def test_ttest_ind_with_uneq_var():
     assert_equal(t.shape, (3, 2))
 
     # test zero division problem
-    t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1], equal_var=False)
+    with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+        t, p = stats.ttest_ind([0, 0, 0], [1, 1, 1], equal_var=False)
     assert_equal((np.abs(t), p), (np.inf, 0))
     with np.errstate(all='ignore'):
         assert_equal(stats.ttest_ind([0, 0, 0], [0, 0, 0], equal_var=False),
@@ -5034,15 +5035,16 @@ def test_ttest_1samp_new():
 
 class TestDescribe:
     def test_describe_scalar(self):
-        with suppress_warnings() as sup, np.errstate(invalid="ignore"):
+        with suppress_warnings() as sup, np.errstate(invalid="ignore"), \
+             pytest.warns(RuntimeWarning, match="Precision loss occurred"):
             sup.filter(RuntimeWarning, "Degrees of freedom <= 0 for slice")
             n, mm, m, v, sk, kurt = stats.describe(4.)
         assert_equal(n, 1)
         assert_equal(mm, (4.0, 4.0))
         assert_equal(m, 4.0)
-        assert_(np.isnan(v))
-        assert_array_almost_equal(sk, 0.0, decimal=13)
-        assert_array_almost_equal(kurt, -3.0, decimal=13)
+        assert np.isnan(v)
+        assert np.isnan(sk)
+        assert np.isnan(kurt)
 
     def test_describe_numbers(self):
         x = np.vstack((np.ones((3,4)), np.full((2, 4), 2)))
@@ -5131,9 +5133,10 @@ class TestDescribe:
 
 
 def test_normalitytests():
-    assert_raises(ValueError, stats.skewtest, 4.)
-    assert_raises(ValueError, stats.kurtosistest, 4.)
-    assert_raises(ValueError, stats.normaltest, 4.)
+    with pytest.warns(RuntimeWarning, match="Precision loss occurred"):
+        assert_raises(ValueError, stats.skewtest, 4.)
+        assert_raises(ValueError, stats.kurtosistest, 4.)
+        assert_raises(ValueError, stats.normaltest, 4.)
 
     # numbers verified with R: dagoTest in package fBasics
     st_normal, st_skew, st_kurt = (3.92371918, 1.98078826, -0.01403734)
@@ -7006,6 +7009,27 @@ class TestBrunnerMunzel:
         assert_approx_equal(p1, 0.0057862086661515377,
                             significant=self.significant)
 
+    def test_brunnermunzel_return_nan(self):
+        """ tests that a warning is emitted when p is nan
+        p-value with t-distributions can be nan (0/0) (see gh-15843)
+        """
+        x = [1, 2, 3]
+        y = [5, 6, 7, 8, 9]
+
+        with pytest.warns(RuntimeWarning, match='p-value cannot be estimated'):
+            stats.brunnermunzel(x, y, distribution="t")
+
+    def test_brunnermunzel_normal_dist(self):
+        """ tests that a p is 0 for datasets that cause p->nan
+        when t-distribution is used (see gh-15843)
+        """
+        x = [1, 2, 3]
+        y = [5, 6, 7, 8, 9]
+
+        with pytest.warns(RuntimeWarning, match='divide by zero'):
+            _, p = stats.brunnermunzel(x, y, distribution="normal")
+        assert_equal(p, 0)
+
 
 class TestRatioUniforms:
     """ Tests for rvs_ratio_uniforms.
@@ -7270,6 +7294,17 @@ class TestMGCStat:
         assert_approx_equal(stat_dist, 0.163, significant=1)
         assert_approx_equal(pvalue_dist, 0.001, significant=1)
 
+    @pytest.mark.slow
+    def test_pvalue_literature(self):
+        np.random.seed(12345678)
+
+        # generate x and y
+        x, y = self._simulations(samps=100, dims=1, sim_type="linear")
+
+        # test stat and pvalue
+        _, pvalue, _ = stats.multiscale_graphcorr(x, y, random_state=1)
+        assert_allclose(pvalue, 1/1001)
+
 
 class TestPageTrendTest:
     # expected statistic and p-values generated using R at
@@ -7459,3 +7494,25 @@ class TestPageTrendTest:
         with assert_raises(TypeError, match="`ranked` must be boolean."):
             stats.page_trend_test(data=[[1, 2, 3], [1, 2, 3]],
                                   ranked="ekki")
+
+
+rng = np.random.default_rng(902340982)
+x = rng.random(10)
+y = rng.random(10)
+
+
+@pytest.mark.parametrize("fun, args",
+                         [(stats.wilcoxon, (x,)),
+                          (stats.ks_1samp, (x, stats.norm.cdf)),  # type: ignore[attr-defined] # noqa
+                          (stats.ks_2samp, (x, y)),
+                          (stats.kstest, (x, y)),
+                          ])
+def test_rename_mode_method(fun, args):
+
+    res = fun(*args, method='exact')
+    res2 = fun(*args, mode='exact')
+    assert_equal(res, res2)
+
+    err = rf"{fun.__name__}() got multiple values for argument"
+    with pytest.raises(TypeError, match=re.escape(err)):
+        fun(*args, method='exact', mode='exact')

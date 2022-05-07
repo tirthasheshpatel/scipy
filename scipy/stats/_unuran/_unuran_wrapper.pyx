@@ -1,9 +1,9 @@
 # cython: language_level=3
 from collections import namedtuple
-cimport cython
 from cpython cimport PyErr_Occurred, PyErr_Fetch, PyErr_Restore
 from cpython.object cimport PyObject
 from cpython.pycapsule cimport PyCapsule_IsValid, PyCapsule_GetPointer
+cimport cython
 import functools
 cimport numpy as np
 import numpy as np
@@ -1343,13 +1343,6 @@ cdef class NumericalInversePolynomial(Method):
           used, seeded with `random_state`.
         * If `random_state` is already a ``Generator`` or ``RandomState``
           instance then that instance is used.
-
-    Notes
-    -----
-    This method does not work for densities with constant parts (e.g.
-    `uniform` distribution) and segmentation faults if such a density is
-    passed to the constructor. It is recommended to use the composition
-    method to sample from such distributions.
 
     References
     ----------
