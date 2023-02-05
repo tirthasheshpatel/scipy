@@ -47,6 +47,7 @@ Continuous distributions
 
 .. autosummary::
    :toctree: generated/
+   :template: contdists.rst
 
    alpha             -- Alpha
    anglit            -- Anglit
@@ -189,6 +190,7 @@ Discrete distributions
 
 .. autosummary::
    :toctree: generated/
+   :template: discrdists.rst
 
    bernoulli                -- Bernoulli
    betabinom                -- Beta-Binomial
