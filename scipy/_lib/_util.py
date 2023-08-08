@@ -17,6 +17,8 @@ from typing import (
 
 import numpy as np
 
+from scipy._lib._array_api import array_namespace
+
 
 AxisError: Type[Exception]
 ComplexWarning: Type[Warning]
@@ -643,23 +645,27 @@ def _nan_allsame(a, axis, keepdims=False):
 
 
 def _contains_nan(a, nan_policy='propagate', use_summation=True,
-                  policies=None):
-    if not isinstance(a, np.ndarray):
-        use_summation = False  # some array_likes ignore nans (e.g. pandas)
+                  policies=None, xp=None):
+    # TODO (tirthasheshpatel): Add back `use_summation=False` for arrays
+    # that skip NaNs when summing. (e.g. pandas)
     if policies is None:
         policies = ['propagate', 'raise', 'omit']
     if nan_policy not in policies:
         raise ValueError("nan_policy must be one of {%s}" %
                          ', '.join("'%s'" % s for s in policies))
 
-    if np.issubdtype(a.dtype, np.inexact):
+    if xp is None:
+        xp = array_namespace(a)
+    if xp.isdtype(a.dtype, ('real floating', 'complex floating')):
         # The summation method avoids creating a (potentially huge) array.
         if use_summation:
+            # Just supress warnings for NumPy
             with np.errstate(invalid='ignore', over='ignore'):
-                contains_nan = np.isnan(np.sum(a))
+                contains_nan = xp.isnan(xp.sum(a))
         else:
-            contains_nan = np.isnan(a).any()
-    elif np.issubdtype(a.dtype, object):
+            contains_nan = xp.isnan(a).any()
+    # don't need xp here since only NumPy has object arrays
+    elif isinstance(a, np.ndarray) and np.issubdtype(a.dtype, object):
         contains_nan = False
         for el in a.ravel():
             # isnan doesn't work on non-numeric elements
