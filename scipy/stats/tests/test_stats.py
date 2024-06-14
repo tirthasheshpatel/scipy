@@ -42,7 +42,7 @@ from scipy.stats._stats_py import (_permutation_distribution_t, _chk_asarray, _m
 from scipy._lib._util import AxisError
 from scipy.conftest import array_api_compatible, skip_xp_invalid_arg
 from scipy._lib._array_api import (xp_assert_close, xp_assert_equal, array_namespace,
-                                   copy, is_numpy, is_torch, SCIPY_ARRAY_API,
+                                   copy, is_numpy, is_torch, is_jax, SCIPY_ARRAY_API,
                                    size as xp_size)
 
 skip_xp_backends = pytest.mark.skip_xp_backends
@@ -2702,15 +2702,8 @@ class TestSEM:
         # y = stats.sem(self.shoes[0])
         # assert_approx_equal(y,0.775177399)
         scalar_testcase = xp.asarray(self.scalar_testcase)[()]
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                y = stats.sem(scalar_testcase)
-        else:
-            # Other array types can emit a variety of warnings.
-            with np.testing.suppress_warnings() as sup:
-                sup.filter(UserWarning)
-                sup.filter(RuntimeWarning)
-                y = stats.sem(scalar_testcase)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            y = stats.sem(scalar_testcase)
         assert xp.isnan(y)
 
     def test_sem(self, xp):
@@ -3380,14 +3373,8 @@ class TestMoments:
             xp_assert_equal(y, xp.empty((2, 0)))
 
         # test empty input
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match="See documentation for..."):
-                test_cases()
-        else:
-            with np.testing.suppress_warnings() as sup:  # needed by array_api_strict
-                sup.filter(RuntimeWarning, "Mean of empty slice.")
-                sup.filter(RuntimeWarning, "invalid value")
-                test_cases()
+        with pytest.warns(SmallSampleWarning, match="See documentation for..."):
+            test_cases()
 
     def test_nan_policy(self):
         x = np.arange(10.)
@@ -3478,15 +3465,8 @@ class TestSkew(SkewKurtosisTest):
     @pytest.mark.parametrize('stat_fun', [stats.skew, stats.kurtosis])
     def test_empty_1d(self, stat_fun, xp):
         x = xp.asarray([])
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                res = stat_fun(x)
-        else:
-            with np.testing.suppress_warnings() as sup:
-                # array_api_strict produces these
-                sup.filter(RuntimeWarning, "Mean of empty slice")
-                sup.filter(RuntimeWarning, "invalid value encountered")
-                res = stat_fun(x)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            res = stat_fun(x)
         xp_assert_equal(res, xp.asarray(xp.nan))
 
     @skip_xp_backends('jax.numpy',
@@ -3788,21 +3768,29 @@ class TestStudentTest:
         xp_assert_close(p, xp.asarray(self.P1_2))
 
     def test_onesample_nan_policy(self, xp):
-        # check nan policy
-        if not is_numpy(xp):
-            x = xp.asarray([1., 2., 3., xp.nan])
-            message = "Use of `nan_policy` and `keepdims`..."
-            with pytest.raises(NotImplementedError, match=message):
-                stats.ttest_1samp(x, 1., nan_policy='omit')
-            return
+        # # check nan policy
+        # if not is_numpy(xp):
+        #     x = xp.asarray([1., 2., 3., xp.nan])
+        #     message = "Use of `nan_policy` and `keepdims`..."
+        #     with pytest.raises(NotImplementedError, match=message):
+        #         stats.ttest_1samp(x, 1., nan_policy='omit')
+        #     return
 
         x = stats.norm.rvs(loc=5, scale=10, size=51, random_state=7654567)
-        x[50] = np.nan
+        x = xp.asarray(x)
+        NaN = xp.asarray(xp.nan, dtype=xp.float64)
+        if is_jax(xp):
+            x = x.at[50].set(NaN)
+        else:
+            x[50] = NaN
         with np.errstate(invalid="ignore"):
-            assert_array_equal(stats.ttest_1samp(x, 5.0), (np.nan, np.nan))
+            res = stats.ttest_1samp(x, 5.0)
+            xp_assert_equal(res[0], NaN)
+            xp_assert_equal(res[1], NaN)
 
-            assert_array_almost_equal(stats.ttest_1samp(x, 5.0, nan_policy='omit'),
-                                      (-1.6412624074367159, 0.107147027334048005))
+            res = stats.ttest_1samp(x, 5.0, nan_policy='omit')
+            xp_assert_close(res[0], xp.asarray(-1.6412624074367159, dtype=xp.float64))
+            xp_assert_close(res[1], xp.asarray(0.107147027334048005, dtype=xp.float64))
             assert_raises(ValueError, stats.ttest_1samp, x, 5.0, nan_policy='raise')
             assert_raises(ValueError, stats.ttest_1samp, x, 5.0,
                           nan_policy='foobar')
@@ -5948,10 +5936,7 @@ def test_ttest_ind_nan_2nd_arg():
 def test_ttest_ind_empty_1d_returns_nan(xp):
     # Two empty inputs should return a TtestResult containing nan
     # for both values.
-    if is_numpy(xp):
-        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-            res = stats.ttest_ind(xp.asarray([]), xp.asarray([]))
-    else:
+    with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
         res = stats.ttest_ind(xp.asarray([]), xp.asarray([]))
     assert isinstance(res, stats._stats_py.TtestResult)
     NaN = xp.asarray(xp.nan)[()]
@@ -6351,17 +6336,12 @@ class NormalityTests:
     def test_too_small(self, xp):
         # 1D sample has too few observations -> warning/error
         test_fun = getattr(stats, self.test_name)
-        x = xp.asarray(4.)
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                res = test_fun(x)
-                NaN = xp.asarray(xp.nan)
-                xp_assert_equal(res.statistic, NaN)
-                xp_assert_equal(res.pvalue, NaN)
-        else:
-            message = "...requires at least..."
-            with pytest.raises(ValueError, match=message):
-                test_fun(x)
+        x = xp.asarray(4., dtype=xp.float64)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            res = test_fun(x)
+            NaN = xp.asarray(xp.nan, dtype=xp.float64)
+            xp_assert_equal(res.statistic, NaN)
+            xp_assert_equal(res.pvalue, NaN)
 
     @pytest.mark.parametrize("alternative", ['two-sided', 'less', 'greater'])
     def test_against_R(self, alternative, xp):
@@ -6420,17 +6400,12 @@ class TestSkewTest(NormalityTests):
         # skewtest requires at least 8 observations; 7 should raise a ValueError.
         stats.skewtest(xp.arange(8.0))
 
-        x = xp.arange(7.0)
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                res = stats.skewtest(x)
-                NaN = xp.asarray(xp.nan)
-                xp_assert_equal(res.statistic, NaN)
-                xp_assert_equal(res.pvalue, NaN)
-        else:
-            message = "`skewtest` requires at least 8 observations"
-            with pytest.raises(ValueError, match=message):
-                stats.skewtest(x)
+        x = xp.arange(7.0, dtype=xp.float64)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            res = stats.skewtest(x)
+            NaN = xp.asarray(xp.nan, dtype=xp.float64)
+            xp_assert_equal(res.statistic, NaN)
+            xp_assert_equal(res.pvalue, NaN)
 
 
 class TestKurtosisTest(NormalityTests):
@@ -6464,17 +6439,12 @@ class TestKurtosisTest(NormalityTests):
         with pytest.warns(UserWarning, match=message):
             stats.kurtosistest(xp.arange(19.0))
 
-        x = xp.arange(4.0)
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                res = stats.skewtest(x)
-                NaN = xp.asarray(xp.nan)
-                xp_assert_equal(res.statistic, NaN)
-                xp_assert_equal(res.pvalue, NaN)
-        else:
-            message = "`kurtosistest` requires at least 5 observations"
-            with pytest.raises(ValueError, match=message):
-                stats.kurtosistest(x)
+        x = xp.arange(4.0, dtype=xp.float64)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            res = stats.skewtest(x)
+            NaN = xp.asarray(xp.nan, dtype=xp.float64)
+            xp_assert_equal(res.statistic, NaN)
+            xp_assert_equal(res.pvalue, NaN)
 
 
 class TestNormalTest(NormalityTests):
@@ -6536,16 +6506,11 @@ class TestJarqueBera:
 
     def test_jarque_bera_size(self, xp):
         x = xp.asarray([])
-        if is_numpy(xp):
-            with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
-                res = stats.jarque_bera(x)
-            NaN = xp.asarray(xp.nan)
-            xp_assert_equal(res.statistic, NaN)
-            xp_assert_equal(res.pvalue, NaN)
-        else:
-            message = "At least one observation is required."
-            with pytest.raises(ValueError, match=message):
-                res = stats.jarque_bera(x)
+        with pytest.warns(SmallSampleWarning, match=too_small_1d_not_omit):
+            res = stats.jarque_bera(x)
+        NaN = xp.asarray(xp.nan)
+        xp_assert_equal(res.statistic, NaN)
+        xp_assert_equal(res.pvalue, NaN)
 
     def test_axis(self, xp):
         rng = np.random.RandomState(seed=122398129)
@@ -9241,20 +9206,3 @@ def test_chk_asarray(xp):
     x_out, axis_out = _chk_asarray(x[0, 0, 0], axis=axis, xp=xp)
     xp_assert_equal(x_out, xp.asarray(np.atleast_1d(x0[0, 0, 0])))
     assert_equal(axis_out, axis)
-
-
-@pytest.mark.skip_xp_backends('numpy',
-                              reasons=['These parameters *are* compatible with NumPy'])
-@pytest.mark.usefixtures("skip_xp_backends")
-@array_api_compatible
-def test_axis_nan_policy_keepdims_nanpolicy(xp):
-    # this test does not need to be repeated for every function
-    # using the _axis_nan_policy decorator. The test is here
-    # rather than in `test_axis_nanpolicy.py` because there is
-    # no reason to run those tests on an array API CI job.
-    x = xp.asarray([1, 2, 3, 4])
-    message = "Use of `nan_policy` and `keepdims`..."
-    with pytest.raises(NotImplementedError, match=message):
-        stats.skew(x, nan_policy='omit')
-    with pytest.raises(NotImplementedError, match=message):
-        stats.skew(x, keepdims=True)
