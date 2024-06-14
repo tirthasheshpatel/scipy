@@ -652,7 +652,7 @@ def _axis_nan_policy_factory(tuple_to_result, default_axis=0,
                 # Addresses nan_policy == "raise"
                 if nan_policy != 'propagate' or override['nan_propagation']:
                     contains_nan = [_contains_nan(sample, nan_policy, xp=xp,
-                                                  xp_supports_omit=True)[0]
+                                                  xp_omit_okay=True)[0]
                                     for sample in samples]
                 else:
                     # Behave as though there are no NaNs (even if there are)
@@ -709,7 +709,7 @@ def _axis_nan_policy_factory(tuple_to_result, default_axis=0,
             # Addresses nan_policy == "raise"
             if nan_policy != 'propagate' or override['nan_propagation']:
                 contains_nan, _ = _contains_nan(x, nan_policy, xp=xp,
-                                                xp_supports_omit=True)
+                                                xp_omit_okay=True)
             else:
                 contains_nan = False  # behave like there are no NaNs
 

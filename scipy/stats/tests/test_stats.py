@@ -38,7 +38,7 @@ from scipy.stats._axis_nan_policy import (_broadcast_concatenate, SmallSampleWar
                                           too_small_nd_omit, too_small_nd_not_omit,
                                           too_small_1d_omit, too_small_1d_not_omit)
 from scipy.stats._stats_py import (_permutation_distribution_t, _chk_asarray, _moment,
-                                   LinregressResult)
+                                   LinregressResult, _xp_mean)
 from scipy._lib._util import AxisError
 from scipy.conftest import array_api_compatible, skip_xp_invalid_arg
 from scipy._lib._array_api import (xp_assert_close, xp_assert_equal, array_namespace,
@@ -6718,12 +6718,15 @@ def test_obrientransform():
     assert_array_almost_equal(result[0], expected, decimal=4)
 
 
-def check_equal_gmean(array_like, desired, axis=None, dtype=None, rtol=1e-7,
+def check_equal_gmean(array_like, desired, *, xp, axis=None, dtype=None, rtol=1e-7,
                       weights=None):
     # Note this doesn't test when axis is not specified
+    dtype = dtype or xp.float64
+    array_like = xp.asarray(array_like, dtype=dtype)
+    desired = xp.asarray(desired, dtype=dtype)
+    weights = xp.asarray(weights, dtype=dtype) if weights is not None else weights
     x = stats.gmean(array_like, axis=axis, dtype=dtype, weights=weights)
-    assert_allclose(x, desired, rtol=rtol)
-    assert_equal(x.dtype, dtype)
+    xp_assert_close(x, desired, rtol=rtol)
 
 
 def check_equal_hmean(array_like, desired, axis=None, dtype=None, rtol=1e-7,
@@ -6769,7 +6772,9 @@ class TestHarMean:
 
     def test_1d_array_with_negative_value(self):
         a = np.array([1, 0, -1])
-        assert_raises(ValueError, stats.hmean, a)
+        message = "The harmonic mean is only defined..."
+        with pytest.warns(RuntimeWarning, match=message):
+            stats.hmean(a)
 
     # Note the next tests use axis=None as default, not axis=0
     def test_2d_list(self):
@@ -6839,115 +6844,129 @@ class TestHarMean:
         check_equal_hmean(a, desired, weights=weights, rtol=1e-5)
 
 
+@array_api_compatible
 class TestGeoMean:
-    def test_0(self):
+    def test_0(self, xp):
         a = [1, 0, 2]
         desired = 0
-        check_equal_gmean(a, desired)
+        check_equal_gmean(a, desired, xp=xp)
 
-    def test_1d_list(self):
+    def test_1d_list(self, xp):
         #  Test a 1d list
         a = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
         desired = 45.2872868812
-        check_equal_gmean(a, desired)
+        check_equal_gmean(a, desired, xp=xp)
 
         a = [1, 2, 3, 4]
         desired = power(1 * 2 * 3 * 4, 1. / 4.)
-        check_equal_gmean(a, desired, rtol=1e-14)
+        check_equal_gmean(a, desired, rtol=1e-14, xp=xp)
 
-    def test_1d_array(self):
+    def test_1d_array(self, xp):
         #  Test a 1d array
         a = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
         desired = 45.2872868812
-        check_equal_gmean(a, desired)
+        check_equal_gmean(a, desired, xp=xp)
 
         a = array([1, 2, 3, 4], float32)
         desired = power(1 * 2 * 3 * 4, 1. / 4.)
-        check_equal_gmean(a, desired, dtype=float32)
+        check_equal_gmean(a, desired, dtype=xp.float32, xp=xp)
 
     # Note the next tests use axis=None as default, not axis=0
-    def test_2d_list(self):
+    def test_2d_list(self, xp):
         #  Test a 2d list
         a = [[10, 20, 30, 40], [50, 60, 70, 80], [90, 100, 110, 120]]
         desired = 52.8885199
-        check_equal_gmean(a, desired)
+        check_equal_gmean(a, desired, xp=xp)
 
-    def test_2d_array(self):
+    def test_2d_array(self, xp):
         #  Test a 2d array
         a = [[10, 20, 30, 40], [50, 60, 70, 80], [90, 100, 110, 120]]
         desired = 52.8885199
-        check_equal_gmean(array(a), desired)
+        check_equal_gmean(array(a), desired, xp=xp)
 
-    def test_2d_axis0(self):
+    def test_2d_axis0(self, xp):
         #  Test a 2d list with axis=0
         a = [[10, 20, 30, 40], [50, 60, 70, 80], [90, 100, 110, 120]]
         desired = np.array([35.56893304, 49.32424149, 61.3579244, 72.68482371])
-        check_equal_gmean(a, desired, axis=0)
+        check_equal_gmean(a, desired, axis=0, xp=xp)
 
         a = array([[1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]])
         desired = array([1, 2, 3, 4])
-        check_equal_gmean(a, desired, axis=0, rtol=1e-14)
+        check_equal_gmean(a, desired, axis=0, rtol=1e-14, xp=xp)
 
-    def test_2d_axis1(self):
+    def test_2d_axis1(self, xp):
         #  Test a 2d list with axis=1
         a = [[10, 20, 30, 40], [50, 60, 70, 80], [90, 100, 110, 120]]
         desired = np.array([22.13363839, 64.02171746, 104.40086817])
-        check_equal_gmean(a, desired, axis=1)
+        check_equal_gmean(a, desired, axis=1, xp=xp)
 
         a = array([[1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]])
         v = power(1 * 2 * 3 * 4, 1. / 4.)
         desired = array([v, v, v])
-        check_equal_gmean(a, desired, axis=1, rtol=1e-14)
+        check_equal_gmean(a, desired, axis=1, rtol=1e-14, xp=xp)
 
-    def test_large_values(self):
+    def test_large_values(self, xp):
         a = array([1e100, 1e200, 1e300])
         desired = 1e200
-        check_equal_gmean(a, desired, rtol=1e-13)
+        check_equal_gmean(a, desired, rtol=1e-13, xp=xp)
 
-    def test_1d_list0(self):
+    def test_1d_list0(self, xp):
         #  Test a 1d list with zero element
         a = [10, 20, 30, 40, 50, 60, 70, 80, 90, 0]
         desired = 0.0  # due to exp(-inf)=0
         with np.errstate(all='ignore'):
-            check_equal_gmean(a, desired)
+            check_equal_gmean(a, desired, xp=xp)
 
-    def test_1d_array0(self):
+    def test_1d_array0(self, xp):
         #  Test a 1d array with zero element
         a = np.array([10, 20, 30, 40, 50, 60, 70, 80, 90, 0])
         desired = 0.0  # due to exp(-inf)=0
         with np.errstate(divide='ignore'):
-            check_equal_gmean(a, desired)
+            check_equal_gmean(a, desired, xp=xp)
 
-    def test_1d_list_neg(self):
+    def test_1d_list_neg(self, xp):
         #  Test a 1d list with negative element
         a = [10, 20, 30, 40, 50, 60, 70, 80, 90, -1]
         desired = np.nan  # due to log(-1) = nan
         with np.errstate(invalid='ignore'):
-            check_equal_gmean(a, desired)
+            check_equal_gmean(a, desired, xp=xp)
 
-    def test_weights_1d_list(self):
+    @pytest.mark.skip_xp_backends(
+        np_only=True,
+        reasons=['array-likes only supported for NumPy backend'],
+    )
+    @pytest.mark.usefixtures("skip_xp_backends")
+    def test_weights_1d_list(self, xp):
         # Desired result from:
         # https://www.dummies.com/education/math/business-statistics/how-to-find-the-weighted-geometric-mean-of-a-data-set/
         a = [1, 2, 3, 4, 5]
         weights = [2, 5, 6, 4, 3]
         desired = 2.77748
-        check_equal_gmean(a, desired, weights=weights, rtol=1e-5)
 
-    def test_weights_1d_array(self):
+        # all the other tests use `check_equal_gmean`, which now converts
+        # the input to an xp-array before calling `gmean`. This time, check
+        # that the function still accepts the lists of ints.
+        res = stats.gmean(a, weights=weights)
+        xp_assert_close(res, np.asarray(desired), rtol=1e-5)
+
+    def test_weights_1d_array(self, xp):
         # Desired result from:
         # https://www.dummies.com/education/math/business-statistics/how-to-find-the-weighted-geometric-mean-of-a-data-set/
         a = np.array([1, 2, 3, 4, 5])
         weights = np.array([2, 5, 6, 4, 3])
         desired = 2.77748
-        check_equal_gmean(a, desired, weights=weights, rtol=1e-5)
+        check_equal_gmean(a, desired, weights=weights, rtol=1e-5, xp=xp)
 
-    def test_weights_masked_1d_array(self):
+    @skip_xp_invalid_arg
+    def test_weights_masked_1d_array(self, xp):
         # Desired result from:
         # https://www.dummies.com/education/math/business-statistics/how-to-find-the-weighted-geometric-mean-of-a-data-set/
         a = np.array([1, 2, 3, 4, 5, 6])
         weights = np.ma.array([2, 5, 6, 4, 3, 5], mask=[0, 0, 0, 0, 0, 1])
         desired = 2.77748
-        check_equal_gmean(a, desired, weights=weights, rtol=1e-5)
+        xp = np.ma  # check_equal_gmean uses xp.asarray; this will preserve the mask
+        check_equal_gmean(a, desired, weights=weights, rtol=1e-5,
+                          dtype=np.float64, xp=xp)
 
 
 class TestPowMean:
@@ -6985,7 +7004,8 @@ class TestPowMean:
 
     def test_1d_array_with_negative_value(self):
         a, p = np.array([1, 0, -1]), 1.23
-        with pytest.raises(ValueError, match='Power mean only defined if all'):
+        message = "The power mean is only defined..."
+        with pytest.warns(RuntimeWarning, match=message):
             stats.pmean(a, p)
 
     @pytest.mark.parametrize(
@@ -7912,54 +7932,59 @@ class TestKruskal:
             stats.kruskal()
 
 
+@array_api_compatible
 class TestCombinePvalues:
 
-    def test_fisher(self):
+    def test_fisher(self, xp):
         # Example taken from https://en.wikipedia.org/wiki/Fisher%27s_exact_test#Example
-        xsq, p = stats.combine_pvalues([.01, .2, .3], method='fisher')
-        assert_approx_equal(p, 0.02156, significant=4)
+        xsq, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='fisher')
+        xp_assert_close(p, xp.asarray(0.02156), rtol=1e-4)
 
-    def test_stouffer(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='stouffer')
-        assert_approx_equal(p, 0.01651, significant=4)
+    def test_stouffer(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='stouffer')
+        xp_assert_close(p, xp.asarray(0.01651), rtol=1e-3)
 
-    def test_stouffer2(self):
-        Z, p = stats.combine_pvalues([.5, .5, .5], method='stouffer')
-        assert_approx_equal(p, 0.5, significant=4)
+    def test_stouffer2(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.5, .5, .5]), method='stouffer')
+        xp_assert_close(p, xp.asarray(0.5), rtol=1e-4)
 
-    def test_weighted_stouffer(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='stouffer',
-                                     weights=np.ones(3))
-        assert_approx_equal(p, 0.01651, significant=4)
+    def test_weighted_stouffer(self, xp):
+        pvalues = xp.asarray([.01, .2, .3])
+        Z, p = stats.combine_pvalues(pvalues, method='stouffer',
+                                     weights=xp.ones(3, dtype=pvalues.dtype))
+        xp_assert_close(p, xp.asarray(0.01651), rtol=1e-3)
 
-    def test_weighted_stouffer2(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='stouffer',
-                                     weights=np.array((1, 4, 9)))
-        assert_approx_equal(p, 0.1464, significant=4)
+    def test_weighted_stouffer2(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='stouffer',
+                                     weights=xp.asarray([1., 4., 9.]))
+        xp_assert_close(p, xp.asarray(0.1464), rtol=1e-3)
 
-    def test_pearson(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='pearson')
-        assert_approx_equal(p, 0.02213, significant=4)
+    def test_pearson(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='pearson')
+        xp_assert_close(p, xp.asarray(0.02213), rtol=1e-3)
 
-    def test_tippett(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='tippett')
-        assert_approx_equal(p, 0.0297, significant=4)
+    def test_tippett(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='tippett')
+        xp_assert_close(p, xp.asarray(0.0297), rtol=1e-4)
 
-    def test_mudholkar_george(self):
-        Z, p = stats.combine_pvalues([.1, .1, .1], method='mudholkar_george')
-        assert_approx_equal(p, 0.019462, significant=4)
+    def test_mudholkar_george(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.1, .1, .1]),
+                                     method='mudholkar_george')
+        xp_assert_close(p, xp.asarray(0.019462), rtol=1e-4)
 
-    def test_mudholkar_george_equal_fisher_pearson_average(self):
-        Z, p = stats.combine_pvalues([.01, .2, .3], method='mudholkar_george')
-        Z_f, p_f = stats.combine_pvalues([.01, .2, .3], method='fisher')
-        Z_p, p_p = stats.combine_pvalues([.01, .2, .3], method='pearson')
-        assert_approx_equal(0.5 * (Z_f+Z_p), Z, significant=4)
+    def test_mudholkar_george_equal_fisher_pearson_average(self, xp):
+        Z, p = stats.combine_pvalues(xp.asarray([.01, .2, .3]),
+                                     method='mudholkar_george')
+        Z_f, p_f = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='fisher')
+        Z_p, p_p = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method='pearson')
+        xp_assert_close(0.5 * (Z_f+Z_p), Z, rtol=1e-4)
 
     methods = ["fisher", "pearson", "tippett", "stouffer", "mudholkar_george"]
 
     @pytest.mark.parametrize("variant", ["single", "all", "random"])
     @pytest.mark.parametrize("method", methods)
-    def test_monotonicity(self, variant, method):
+    def test_monotonicity(self, variant, method, xp):
+        xp_test = array_namespace(xp.asarray(1))
         # Test that result increases monotonically with respect to input.
         m, n = 10, 7
         rng = np.random.default_rng(278448169958891062669391462690811630763)
@@ -7969,23 +7994,25 @@ class TestCombinePvalues:
         # monotonically down one column (single), simultaneously down each
         # column (all), or independently down each column (random).
         if variant == "single":
-            pvaluess = np.full((m, n), rng.random(n))
-            pvaluess[:, 0] = np.linspace(0.1, 0.9, m)
+            pvaluess = xp.broadcast_to(xp.asarray(rng.random(n)), (m, n))
+            pvaluess = xp_test.concat([xp.reshape(xp.linspace(0.1, 0.9, m), (-1, 1)),
+                                       pvaluess[:, 1:]], axis=1)
         elif variant == "all":
-            pvaluess = np.full((n, m), np.linspace(0.1, 0.9, m)).T
+            pvaluess = xp.broadcast_to(xp.linspace(0.1, 0.9, m), (n, m)).T
         elif variant == "random":
-            pvaluess = np.sort(rng.uniform(0, 1, size=(m, n)), axis=0)
+            pvaluess = xp_test.sort(xp.asarray(rng.uniform(0, 1, size=(m, n))), axis=0)
 
-        combined_pvalues = [
-            stats.combine_pvalues(pvalues, method=method)[1]
-            for pvalues in pvaluess
-        ]
-        assert np.all(np.diff(combined_pvalues) >= 0)
+        combined_pvalues = xp.asarray([
+            stats.combine_pvalues(pvaluess[i, :], method=method)[1]
+            for i in range(pvaluess.shape[0])
+        ])
+        assert xp.all(combined_pvalues[1:] - combined_pvalues[:-1] >= 0)
 
     @pytest.mark.parametrize("method", methods)
-    def test_result(self, method):
-        res = stats.combine_pvalues([.01, .2, .3], method=method)
-        assert_equal((res.statistic, res.pvalue), res)
+    def test_result(self, method, xp):
+        res = stats.combine_pvalues(xp.asarray([.01, .2, .3]), method=method)
+        xp_assert_equal(res.statistic, res[0])
+        xp_assert_equal(res.pvalue, res[1])
 
 
 class TestCdfDistanceValidation:
@@ -9038,6 +9065,125 @@ class TestExpectile:
         for alpha in np.r_[0, alpha_seq, 1 - alpha_seq[:-1:-1], 1]:
             e_list.append(stats.expectile(x, alpha=alpha))
         assert np.all(np.diff(e_list) > 0)
+
+
+@array_api_compatible
+class TestXP_Mean:
+    @pytest.mark.parametrize('axis', [None, 1, -1, (-2, 2)])
+    @pytest.mark.parametrize('weights', [None, True])
+    @pytest.mark.parametrize('keepdims', [False, True])
+    def test_xp_mean_basic(self, xp, axis, weights, keepdims):
+        rng = np.random.default_rng(90359458245906)
+        x = rng.random((3, 4, 5))
+        x_xp = xp.asarray(x)
+        w = w_xp = None
+
+        if weights:
+            w = rng.random((1, 5))
+            w_xp = xp.asarray(w)
+            x, w = np.broadcast_arrays(x, w)
+
+        res = _xp_mean(x_xp, weights=w_xp, axis=axis, keepdims=keepdims)
+        ref = np.average(x, weights=w, axis=axis, keepdims=keepdims)
+
+        xp_assert_close(res, xp.asarray(ref))
+
+    def test_non_broadcastable(self, xp):
+        # non-broadcastable x and weights
+        x, w = xp.arange(10.), xp.zeros(5)
+        message = "Array shapes are incompatible for broadcasting."
+        with pytest.raises(ValueError, match=message):
+            _xp_mean(x, weights=w)
+
+    def test_special_cases(self, xp):
+        # weights sum to zero
+        weights = xp.asarray([-1., 0., 1.])
+
+        res = _xp_mean(xp.asarray([1., 1., 1.]), weights=weights)
+        xp_assert_close(res, xp.asarray(xp.nan))
+
+        res = _xp_mean(xp.asarray([2., 1., 1.]), weights=weights)
+        xp_assert_close(res, xp.asarray(-np.inf))
+
+        res = _xp_mean(xp.asarray([1., 1., 2.]), weights=weights)
+        xp_assert_close(res, xp.asarray(np.inf))
+
+    def test_nan_policy(self, xp):
+        x = xp.arange(10.)
+        mask = (x == 3)
+        x = xp.where(mask, xp.asarray(xp.nan), x)
+
+        # nan_policy='raise' raises an error
+        message = 'The input contains nan values'
+        with pytest.raises(ValueError, match=message):
+            _xp_mean(x, nan_policy='raise')
+
+        # `nan_policy='propagate'` is the default, and the result is NaN
+        res1 = _xp_mean(x)
+        res2 = _xp_mean(x, nan_policy='propagate')
+        ref = xp.asarray(xp.nan)
+        xp_assert_equal(res1, ref)
+        xp_assert_equal(res2, ref)
+
+        # `nan_policy='omit'` omits NaNs in `x`
+        res = _xp_mean(x, nan_policy='omit')
+        ref = xp.mean(x[~mask])
+        xp_assert_close(res, ref)
+
+        # `nan_policy='omit'` omits NaNs in `weights`, too
+        weights = xp.ones(10)
+        weights = xp.where(mask, xp.asarray(xp.nan), weights)
+        res = _xp_mean(xp.arange(10.), weights=weights, nan_policy='omit')
+        ref = xp.mean(x[~mask])
+        xp_assert_close(res, ref)
+
+        # Check for warning if omitting NaNs causes empty slice
+        message = 'After omitting NaNs...'
+        with pytest.warns(RuntimeWarning, match=message):
+            res = _xp_mean(x * np.nan, nan_policy='omit')
+            ref = xp.asarray(xp.nan)
+            xp_assert_equal(res, ref)
+
+    def test_empty(self, xp):
+        message = 'One or more sample arguments is too small...'
+        with pytest.warns(SmallSampleWarning, match=message):
+            res = _xp_mean(xp.asarray([]))
+            ref = xp.asarray(xp.nan)
+            xp_assert_equal(res, ref)
+
+        message = "All axis-slices of one or more sample arguments..."
+        with pytest.warns(SmallSampleWarning, match=message):
+            res = _xp_mean(xp.asarray([[]]), axis=1)
+            ref = xp.asarray([xp.nan])
+            xp_assert_equal(res, ref)
+
+        res = _xp_mean(xp.asarray([[]]), axis=0)
+        ref = xp.asarray([])
+        xp_assert_equal(res, ref)
+
+    def test_dtype(self, xp):
+        max = xp.finfo(xp.float32).max
+        x_np = np.asarray([max, max], dtype=np.float32)
+        x_xp = xp.asarray(x_np)
+
+        # Overflow occurs for float32 input
+        with np.errstate(over='ignore'):
+            res = _xp_mean(x_xp)
+            ref = np.mean(x_np)
+            np.testing.assert_equal(ref, np.inf)
+            xp_assert_close(res, xp.asarray(ref))
+
+        # correct result is returned if `float64` is used
+        res = _xp_mean(x_xp, dtype=xp.float64)
+        ref = xp.asarray(np.mean(np.asarray(x_np, dtype=np.float64)))
+        xp_assert_close(res, ref)
+
+    def test_integer(self, xp):
+        # integer inputs are converted to the appropriate float
+        x = xp.arange(10)
+        y = xp.arange(10.)
+        xp_assert_equal(_xp_mean(x), _xp_mean(y))
+        xp_assert_equal(_xp_mean(y, weights=x), _xp_mean(y, weights=y))
 
 
 @array_api_compatible
