@@ -141,7 +141,8 @@ SignificanceResult = _make_tuple_bunch('SignificanceResult',
 # note that `weights` are paired with `x`
 @_axis_nan_policy_factory(
         lambda x: x, n_samples=1, n_outputs=1, too_small=0, paired=True,
-        result_to_tuple=lambda x: (x,), kwd_samples=['weights'])
+        result_to_tuple=lambda x: (x,), kwd_samples=['weights'],
+        supports_array_api=True)
 def gmean(a, axis=0, dtype=None, weights=None):
     r"""Compute the weighted geometric mean along the specified axis.
 
@@ -9175,7 +9176,8 @@ def brunnermunzel(x, y, alternative="two-sided", distribution="t",
     return BrunnerMunzelResult(wbfn, p)
 
 
-@_axis_nan_policy_factory(SignificanceResult, kwd_samples=['weights'], paired=True)
+@_axis_nan_policy_factory(SignificanceResult, kwd_samples=['weights'], paired=True,
+                          supports_array_api=True)
 def combine_pvalues(pvalues, method='fisher', weights=None):
     """
     Combine p-values from independent tests that bear upon the same hypothesis.
