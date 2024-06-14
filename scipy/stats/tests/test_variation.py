@@ -138,10 +138,7 @@ class TestVariation:
             # torch
             sup.filter(UserWarning, "std*")
             if axis != 0:
-                if is_numpy(xp):
-                    with pytest.warns(SmallSampleWarning, match="See documentation..."):
-                        y = variation(x, axis=axis)
-                else:
+                with pytest.warns(SmallSampleWarning, match="See documentation..."):
                     y = variation(x, axis=axis)
             else:
                 y = variation(x, axis=axis)

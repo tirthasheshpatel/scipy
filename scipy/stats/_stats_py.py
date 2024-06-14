@@ -895,10 +895,11 @@ def _moment_outputs(kwds):
     return len(order)
 
 
-def _moment_result_object(*args):
+def _moment_result_object(*args, xp=None):
     if len(args) == 1:
         return args[0]
-    return np.asarray(args)
+    xp = array_namespace(*args) if xp is None else xp
+    return xp.stack(args, axis=0)
 
 # `moment` fits into the `_axis_nan_policy` pattern, but it is a bit unusual
 # because the number of outputs is variable. Specifically,
@@ -926,7 +927,7 @@ def _moment_result_object(*args):
 @_rename_parameter('moment', 'order')
 @_axis_nan_policy_factory(  # noqa: E302
     _moment_result_object, n_samples=1, result_to_tuple=lambda x: (x,),
-    n_outputs=_moment_outputs
+    n_outputs=_moment_outputs, supports_array_api=True
 )
 def moment(a, order=1, axis=0, nan_policy='propagate', *, center=None):
     r"""Calculate the nth moment about the mean for a sample.
@@ -1114,7 +1115,7 @@ def _var(x, axis=0, ddof=0, mean=None, xp=None):
 
 
 @_axis_nan_policy_factory(
-    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1
+    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1, supports_array_api=True
 )
 # nan_policy handled by `_axis_nan_policy`, but needs to be left
 # in signature to preserve use as a positional argument
@@ -1216,7 +1217,7 @@ def skew(a, axis=0, bias=True, nan_policy='propagate'):
 
 
 @_axis_nan_policy_factory(
-    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1
+    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1, supports_array_api=True
 )
 # nan_policy handled by `_axis_nan_policy`, but needs to be left
 # in signature to preserve use as a positional argument
@@ -1446,7 +1447,8 @@ def _get_pvalue(statistic, distribution, alternative, symmetric=True, xp=None):
 SkewtestResult = namedtuple('SkewtestResult', ('statistic', 'pvalue'))
 
 
-@_axis_nan_policy_factory(SkewtestResult, n_samples=1, too_small=7)
+@_axis_nan_policy_factory(SkewtestResult, n_samples=1, too_small=7,
+                          supports_array_api=True)
 # nan_policy handled by `_axis_nan_policy`, but needs to be left
 # in signature to preserve use as a positional argument
 def skewtest(a, axis=0, nan_policy='propagate', alternative='two-sided'):
@@ -1637,7 +1639,8 @@ def skewtest(a, axis=0, nan_policy='propagate', alternative='two-sided'):
 KurtosistestResult = namedtuple('KurtosistestResult', ('statistic', 'pvalue'))
 
 
-@_axis_nan_policy_factory(KurtosistestResult, n_samples=1, too_small=4)
+@_axis_nan_policy_factory(KurtosistestResult, n_samples=1, too_small=4,
+                          supports_array_api=True)
 def kurtosistest(a, axis=0, nan_policy='propagate', alternative='two-sided'):
     r"""Test whether a dataset has normal kurtosis.
 
@@ -1847,7 +1850,8 @@ def kurtosistest(a, axis=0, nan_policy='propagate', alternative='two-sided'):
 NormaltestResult = namedtuple('NormaltestResult', ('statistic', 'pvalue'))
 
 
-@_axis_nan_policy_factory(NormaltestResult, n_samples=1, too_small=7)
+@_axis_nan_policy_factory(NormaltestResult, n_samples=1, too_small=7,
+                          supports_array_api=True)
 def normaltest(a, axis=0, nan_policy='propagate'):
     r"""Test whether a sample differs from a normal distribution.
 
@@ -2012,7 +2016,8 @@ def normaltest(a, axis=0, nan_policy='propagate'):
     return NormaltestResult(statistic, pvalue)
 
 
-@_axis_nan_policy_factory(SignificanceResult, default_axis=None)
+@_axis_nan_policy_factory(SignificanceResult, default_axis=None,
+                          supports_array_api=True)
 def jarque_bera(x, *, axis=None):
     r"""Perform the Jarque-Bera goodness of fit test on sample data.
 
@@ -2797,7 +2802,8 @@ def obrientransform(*samples):
 
 
 @_axis_nan_policy_factory(
-    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1, too_small=1
+    lambda x: x, result_to_tuple=lambda x: (x,), n_outputs=1, too_small=1,
+    supports_array_api=True
 )
 def sem(a, axis=0, ddof=1, nan_policy='propagate'):
     """Compute standard error of the mean.
@@ -6275,7 +6281,8 @@ def unpack_TtestResult(res):
 
 
 @_axis_nan_policy_factory(pack_TtestResult, default_axis=0, n_samples=2,
-                          result_to_tuple=unpack_TtestResult, n_outputs=6)
+                          result_to_tuple=unpack_TtestResult, n_outputs=6,
+                          supports_array_api=True)
 # nan_policy handled by `_axis_nan_policy`, but needs to be left
 # in signature to preserve use as a positional argument
 def ttest_1samp(a, popmean, axis=0, nan_policy="propagate", alternative="two-sided"):
@@ -6697,7 +6704,8 @@ def ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2,
 
 
 @_axis_nan_policy_factory(pack_TtestResult, default_axis=0, n_samples=2,
-                          result_to_tuple=unpack_TtestResult, n_outputs=6)
+                          result_to_tuple=unpack_TtestResult, n_outputs=6,
+                          supports_array_api=True)
 def ttest_ind(a, b, axis=0, equal_var=True, nan_policy='propagate',
               permutations=None, random_state=None, alternative="two-sided",
               trim=0):
@@ -7222,7 +7230,7 @@ def _get_len(a, axis, msg):
 
 @_axis_nan_policy_factory(pack_TtestResult, default_axis=0, n_samples=2,
                           result_to_tuple=unpack_TtestResult, n_outputs=6,
-                          paired=True)
+                          paired=True, supports_array_api=True)
 def ttest_rel(a, b, axis=0, nan_policy='propagate', alternative="two-sided"):
     """Calculate the t-test on TWO RELATED samples of scores, a and b.
 

@@ -21,7 +21,8 @@ __all__ = ['entropy', 'differential_entropy']
         else 1
     ),
     n_outputs=1, result_to_tuple=lambda x: (x,), paired=True,
-    too_small=-1  # entropy doesn't have too small inputs
+    too_small=-1,  # entropy doesn't have too small inputs,
+    supports_array_api=True
 )
 def entropy(pk: np.typing.ArrayLike,
             qk: np.typing.ArrayLike | None = None,
